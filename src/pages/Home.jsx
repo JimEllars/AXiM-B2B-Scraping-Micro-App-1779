@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Wizard from '../components/Wizard';
 import LeadPreview from '../components/LeadPreview';
 import NetworkStats from '../components/NetworkStats';
@@ -6,22 +6,21 @@ import NetworkFeed from '../components/NetworkFeed';
 import TrustSignals from '../components/TrustSignals';
 import DataSchema from '../components/DataSchema';
 import NodeMap from '../components/NodeMap';
+import LedgerModal from '../components/LedgerModal';
 import SafeIcon from '../common/SafeIcon';
-import { FiActivity, FiLayers, FiCpu } from 'react-icons/fi';
+import { FiActivity, FiLayers, FiCpu, FiDatabase } from 'react-icons/fi';
 import { GetStarted } from '@questlabs/react-sdk';
 
 export default function Home() {
+  const [isLedgerOpen, setIsLedgerOpen] = useState(false);
+
   const getStartedStyle = {
     Form: { backgroundColor: '#0a0a0a', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '24px', padding: '32px' },
     Heading: { color: '#ffffff', fontSize: '20px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.05em' },
     Description: { color: '#6b7280', fontSize: '13px' },
     Card: { backgroundColor: '#141414', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px' },
     PrimaryButton: { backgroundColor: '#00e5ff', color: '#000000', fontWeight: '900', borderRadius: '8px' },
-    ProgressBar: { 
-      barColor: '#00e5ff', 
-      barParentColor: '#1a1a1a', 
-      ProgressText: { color: '#ffffff', fontWeight: '900', fontSize: '12px' } 
-    }
+    ProgressBar: { barColor: '#00e5ff', barParentColor: '#1a1a1a', ProgressText: { color: '#ffffff', fontWeight: '900', fontSize: '12px' } }
   };
 
   return (
@@ -35,7 +34,12 @@ export default function Home() {
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <div className="px-2 py-0.5 bg-axim-teal/10 border border-axim-teal/20 rounded text-[8px] font-black text-axim-teal uppercase tracking-widest">v2.4 Stable</div>
-                <div className="px-2 py-0.5 bg-white/5 border border-white/10 rounded text-[8px] font-black text-gray-500 uppercase tracking-widest">Edge-Optimized</div>
+                <button 
+                  onClick={() => setIsLedgerOpen(true)}
+                  className="px-2 py-0.5 bg-white/5 border border-white/10 rounded text-[8px] font-black text-gray-500 uppercase tracking-widest hover:bg-white/10 transition-colors flex items-center gap-1"
+                >
+                  <SafeIcon icon={FiDatabase} /> View Ledger
+                </button>
               </div>
               <h1 className="text-5xl font-black tracking-tighter uppercase italic text-white">
                 AXiM <span className="text-axim-teal">B2B</span> Scraper
@@ -46,12 +50,12 @@ export default function Home() {
           </div>
 
           <Wizard />
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-12">
             <LeadPreview />
             <DataSchema />
           </div>
-          
+
           <NetworkStats />
         </div>
 
@@ -59,15 +63,11 @@ export default function Home() {
         <div className="space-y-10">
           <div className="relative">
             <div className="absolute -top-4 -left-4 w-24 h-24 bg-axim-teal/5 blur-3xl rounded-full"></div>
-            <GetStarted 
-              questId="axim-onboarding" 
-              userId="vis_123" 
-              styleConfig={getStartedStyle}
-            />
+            <GetStarted questId="axim-onboarding" userId="vis_123" styleConfig={getStartedStyle} />
           </div>
 
           <NodeMap />
-          
+
           <div className="bg-white/[0.02] border border-white/5 p-8 rounded-3xl">
             <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 mb-6 flex items-center gap-2">
               <div className="w-1 h-3 bg-axim-teal rounded-full"></div>
@@ -75,7 +75,7 @@ export default function Home() {
             </h3>
             <TrustSignals />
           </div>
-          
+
           <div className="p-6 border border-axim-teal/10 rounded-2xl bg-axim-teal/[0.02] flex items-start gap-4">
             <div className="w-10 h-10 rounded-full bg-axim-teal/10 flex items-center justify-center shrink-0">
               <SafeIcon icon={FiActivity} className="text-axim-teal" />
@@ -89,6 +89,8 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      <LedgerModal isOpen={isLedgerOpen} onClose={() => setIsLedgerOpen(false)} />
     </div>
   );
 }
