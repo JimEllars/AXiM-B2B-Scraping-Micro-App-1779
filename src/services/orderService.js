@@ -54,10 +54,6 @@ export const orderService = {
             const hoursDiff = (now - timestamp) / (1000 * 60 * 60);
             if (hoursDiff > 2) {
               status = 'ABANDONED';
-
-              // Optionally trigger a silent background update to the sheet
-              // so the ledger itself reflects the new state
-              this.updateOrderStatus(row[0], 'ABANDONED').catch(() => {});
             }
           }
 

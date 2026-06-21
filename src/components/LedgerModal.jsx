@@ -7,6 +7,7 @@ import { FiX, FiActivity, FiClock, FiMapPin, FiCheckCircle } from 'react-icons/f
 export default function LedgerModal({ isOpen, onClose }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -17,6 +18,15 @@ export default function LedgerModal({ isOpen, onClose }) {
       });
     }
   }, [isOpen]);
+
+  const filteredOrders = orders.filter((order) => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      (order.industry && order.industry.toLowerCase().includes(term)) ||
+      (order.location && order.location.toLowerCase().includes(term))
+    );
+  });
 
   return (
     <AnimatePresence>
@@ -45,17 +55,27 @@ export default function LedgerModal({ isOpen, onClose }) {
               </button>
             </div>
 
+            <div className="p-4 border-b border-white/5">
+              <input
+                type="text"
+                placeholder="[SEARCH FILTER // TARGET SECTOR OR REGION]"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-black/50 border border-white/10 text-white p-3 font-mono font-bold text-xs focus:border-axim-teal outline-none transition-colors"
+              />
+            </div>
+
             <div className="max-h-[60vh] overflow-y-auto p-4 space-y-3">
               {loading ? (
                 <div className="py-20 text-center text-[10px] font-mono text-gray-600 animate-pulse uppercase tracking-widest">
                   Retrieving Encrypted Records...
                 </div>
-              ) : orders.length === 0 ? (
+              ) : filteredOrders.length === 0 ? (
                 <div className="py-20 text-center text-[10px] font-mono text-gray-600 uppercase tracking-widest">
                   No records found in current segment.
                 </div>
               ) : (
-                orders.map((order) => (
+                filteredOrders.map((order) => (
                   <div key={order.id} className="bg-white/[0.02] border border-white/5 p-4 rounded-xl flex items-center justify-between group hover:border-axim-teal/20 transition-all">
                     <div className="flex gap-4">
                       <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
