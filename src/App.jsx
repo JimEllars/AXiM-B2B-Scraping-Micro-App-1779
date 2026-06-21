@@ -1,4 +1,5 @@
 import React from 'react';
+import ErrorBoundary from './components/ErrorBoundary';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Home from './pages/Home';
 import Success from './pages/Success';
@@ -40,10 +41,12 @@ function App() {
         </header>
         
         <main className="flex-1 flex flex-col items-center relative z-10">
+          <ErrorBoundary>
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/success" element={<Success />} />
           </Routes>
+          </ErrorBoundary>
         </main>
         
         <footer className="w-full p-8 border-t border-white/5 relative z-10 bg-void">

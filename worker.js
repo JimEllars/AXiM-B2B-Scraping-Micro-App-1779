@@ -84,8 +84,37 @@ export default {
 // --- HELPER FUNCTIONS ---
 
 async function executeScrape(apiKey, filters) {
-  // Implementation for external scraping API (BrightData/Apify)
-  return [{ company: "Example Corp", phone: "555-0100", email: "contact@example.com" }];
+  try {
+    const payload = {
+      industry: filters.industry,
+      location: filters.location,
+      size: filters.size,
+      keywords: filters.keywords
+    };
+
+    const response = await fetch('https://api.apify.com/v2/actor-tasks/axim-scraper/run-sync-get-dataset-items', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error(`Scraper API failed with status: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (!Array.isArray(data) || data.length === 0) {
+      throw new Error("Scraper returned no leads");
+    }
+
+    return data;
+  } catch (err) {
+    throw new Error(`Scrape execution failed: ${err.message}`);
+  }
 }
 
 function convertToCSV(data) {
@@ -120,5 +149,22 @@ async function syncToAximCore(aximKey, leads, filters) {
 }
 
 async function logExecutionToLedger(aximKey, sessionId, filters) {
-  // Fire and forget logging
+  try {
+    const payload = {
+      session_id: sessionId,
+      filters: filters,
+      timestamp: new Date().toISOString()
+    };
+
+    await fetch('https://api.axim.us.com/v1/ledger/log', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${aximKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+  } catch (err) {
+    console.error("Ledger logging failed", err);
+  }
 }

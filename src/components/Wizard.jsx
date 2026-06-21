@@ -5,6 +5,30 @@ import { FiDatabase, FiLock, FiMail, FiUsers, FiSearch, FiTarget, FiZap } from '
 
 export default function Wizard() {
   const { filters, email, updateFilter, initiateCheckout, isProcessing, estimatedLeads } = useScraperStore();
+  const [validationError, setValidationError] = React.useState('');
+
+
+  const handleCheckout = () => {
+    setValidationError('');
+
+    if (!filters.industry.trim()) {
+      setValidationError('Industry is required.');
+      return;
+    }
+
+    if (!email.trim()) {
+      setValidationError('Email is required.');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setValidationError('Please enter a valid email address.');
+      return;
+    }
+
+    initiateCheckout();
+  };
 
   return (
     <div className="bg-[#0a0a0a] border border-white/10 p-10 rounded-3xl w-full shadow-[0_0_60px_rgba(0,229,255,0.03)] relative overflow-hidden group">
@@ -34,7 +58,8 @@ export default function Wizard() {
               <input 
                 type="text" 
                 value={filters.industry}
-                onChange={(e) => updateFilter('industry', e.target.value)}
+                onChange={(e) => updateFilter('industry', e.target.value.trimStart())}
+                onBlur={(e) => updateFilter('industry', e.target.value.trim())}
                 placeholder="e.g. Solar, Roofing, SaaS"
                 className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-1 focus:ring-axim-teal/20 focus:outline-none transition-all placeholder:text-gray-800"
               />
@@ -48,7 +73,8 @@ export default function Wizard() {
             <input 
               type="text" 
               value={filters.location}
-              onChange={(e) => updateFilter('location', e.target.value)}
+              onChange={(e) => updateFilter('location', e.target.value.trimStart())}
+              onBlur={(e) => updateFilter('location', e.target.value.trim())}
               placeholder="City, State or Country"
               className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-1 focus:ring-axim-teal/20 focus:outline-none transition-all placeholder:text-gray-800"
             />
@@ -103,9 +129,10 @@ export default function Wizard() {
         </div>
 
         <div className="pt-6">
+          {validationError && <p className="text-red-500 text-xs font-mono mb-4 text-center">{validationError}</p>}
           <button 
-            onClick={initiateCheckout}
-            disabled={isProcessing || !email || !filters.industry}
+            onClick={handleCheckout}
+            disabled={isProcessing}
             className="w-full bg-axim-teal text-black font-black uppercase tracking-[0.3em] py-6 rounded-2xl hover:bg-white transition-all duration-500 disabled:opacity-20 flex items-center justify-center gap-4 group shadow-[0_10px_40px_rgba(0,229,255,0.15)] relative overflow-hidden"
           >
             <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-500"></div>
