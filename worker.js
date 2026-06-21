@@ -15,6 +15,7 @@ export default {
       if (!env.STRIPE_SECRET_KEY) missingKeys.push('STRIPE_SECRET_KEY');
       if (!env.SCRAPING_API_KEY) missingKeys.push('SCRAPING_API_KEY');
       if (!env.EMAILIT_API_KEY) missingKeys.push('EMAILIT_API_KEY');
+      if (!env.AXIM_SERVICE_KEY) missingKeys.push('AXIM_SERVICE_KEY');
 
       if (missingKeys.length > 0) {
         const payload = {
@@ -253,7 +254,7 @@ function convertToCSV(data) {
 
   const escapeCSV = (val) => {
     if (val === null || val === undefined) return '';
-    const str = String(val);
+    const str = String(val).replace(/\r/g, ' ');
     if (str.includes(',') || str.includes('\n') || str.includes('"')) {
       return `"${str.replace(/"/g, '""')}"`;
     }
