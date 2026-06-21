@@ -9,7 +9,7 @@ import { Feedback } from '@questlabs/react-sdk';
 export default function Success() {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('session_id');
-  const { fulfillmentStatus, triggerFulfillment } = useScraperStore();
+  const { fulfillmentStatus, triggerFulfillment, filters } = useScraperStore();
 
   useEffect(() => {
     if (sessionId) triggerFulfillment(sessionId);
@@ -45,6 +45,7 @@ export default function Success() {
           </div>
         )}
 
+
         {fulfillmentStatus === 'completed' && (
           <div className="flex flex-col items-center gap-6 text-center w-full py-4">
             <div className="w-20 h-20 bg-axim-teal/10 rounded-full flex items-center justify-center border border-axim-teal/20 relative">
@@ -56,12 +57,44 @@ export default function Success() {
               <p className="text-gray-400 text-sm max-w-xs mx-auto mb-6">
                 Your encrypted lead cohort has been dispatched to your inbox.
               </p>
-              <button className="flex items-center gap-2 bg-white/5 border border-white/10 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all text-white">
+
+              <div className="bg-[#141414] border border-white/10 p-4 rounded-xl mb-6 text-left w-full max-w-md mx-auto">
+                <h3 className="text-axim-teal text-[10px] font-black uppercase tracking-widest mb-3">Edge Receipt Manifest</h3>
+                <div className="grid grid-cols-2 gap-2 text-xs font-mono text-gray-300">
+                  <div className="text-gray-500">Industry:</div>
+                  <div className="text-white">{filters?.industry || 'N/A'}</div>
+                  <div className="text-gray-500">Location:</div>
+                  <div className="text-white">{filters?.location || 'N/A'}</div>
+                  <div className="text-gray-500">Company Size:</div>
+                  <div className="text-white">{filters?.size || 'N/A'}</div>
+                  {filters?.keywords && (
+                    <>
+                      <div className="text-gray-500">Keywords:</div>
+                      <div className="text-white truncate">{filters.keywords}</div>
+                    </>
+                  )}
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between">
+                  <div className="text-[10px] font-mono text-gray-500 truncate mr-2 flex-1">
+                    ID: {sessionId || 'UNKNOWN'}
+                  </div>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(sessionId || '')}
+                    className="flex items-center gap-1.5 bg-axim-teal/10 hover:bg-axim-teal/20 text-axim-teal px-3 py-1.5 rounded text-[9px] font-black uppercase tracking-wider transition-colors"
+                  >
+                    Copy Receipt Ledger ID
+                  </button>
+                </div>
+              </div>
+
+              <button className="flex items-center gap-2 bg-white/5 border border-white/10 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all text-white mx-auto">
                 <SafeIcon icon={FiExternalLink} /> View Order History
               </button>
             </div>
           </div>
         )}
+
 
         {fulfillmentStatus === 'error' && (
           <div className="flex flex-col items-center gap-4 text-center w-full py-8">

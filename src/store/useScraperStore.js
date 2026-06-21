@@ -75,7 +75,10 @@ export const useScraperStore = create((set, get) => ({
         throw new Error("No checkout URL returned from API");
       }
     } catch (err) {
-      logError("CHECKOUT_FAILURE", err);
+      logError("CHECKOUT_FAILURE", {
+        message: err.message || 'PROTOCOL_ABORTED',
+        stack: err.stack || JSON.stringify(err)
+      });
       addLog(`CHECKOUT_ERROR: ${err.message || 'PROTOCOL_ABORTED'}`);
     } finally {
       set({ isProcessing: false });
@@ -145,7 +148,10 @@ export const useScraperStore = create((set, get) => ({
       await orderService.updateOrderStatus(sessionId, 'COMPLETED', data.count || estimatedLeads);
       set({ fulfillmentStatus: 'completed' });
     } catch (err) {
-      logError("FULFILLMENT_FAILURE", err);
+      logError("FULFILLMENT_FAILURE", {
+        message: err.message || 'FULFILLMENT_ERROR',
+        stack: err.stack || JSON.stringify(err)
+      });
       set({ fulfillmentStatus: 'error' });
       addLog(`ERR: ${err.message}`);
       await orderService.updateOrderStatus(sessionId, 'FAILED');

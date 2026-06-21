@@ -5,6 +5,46 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    if (url.pathname.startsWith('/api/')) {
+      const origin = request.headers.get('Origin');
+      if (origin !== env.FRONTEND_URL) {
+        return new Response(JSON.stringify({ error: "Forbidden: Invalid Origin" }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      const missingKeys = [];
+      if (!env.STRIPE_SECRET_KEY) missingKeys.push('STRIPE_SECRET_KEY');
+      if (!env.SCRAPING_API_KEY) missingKeys.push('SCRAPING_API_KEY');
+      if (!env.EMAILIT_API_KEY) missingKeys.push('EMAILIT_API_KEY');
+
+      if (missingKeys.length > 0) {
+        const payload = {
+          telemetry_envelope: {
+            project_id: "AXIM_B2B_SCRAPER",
+            environment: "production",
+            timestamp: new Date().toISOString()
+          },
+          event_payload: {
+            event_type: "MISSING_SECRETS",
+            severity: "HIGH",
+            error_message: `Missing runtime secrets: ${missingKeys.join(', ')}`,
+            stack_trace: "",
+            metadata: { route: url.pathname }
+          }
+        };
+
+        ctx.waitUntil(
+          fetch('https://api.axim.us.com/v1/telemetry/ingest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          }).catch(() => {})
+        );
+
+        return new Response(JSON.stringify({ error: "Service Unavailable" }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+
+
     // 1. STRIPE CHECKOUT ORCHESTRATION
     if (url.pathname === '/api/checkout' && request.method === 'POST') {
       try {
@@ -225,11 +265,20 @@ function convertToCSV(data) {
 }
 
 async function sendEmailItFulfillment(apiKey, email, csvData, filters) {
+    const bytes = new TextEncoder().encode(csvData);
+  const chunkSize = 8192;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, chunk);
+  }
+  const safeBase64 = btoa(binary);
+
   const payload = {
     to: [{ email }],
     subject: `Your B2B Lead List: ${filters.industry} / ${filters.location}`,
     html: `<h1>Order Complete</h1><p>Your targeted lead list is attached.</p>`,
-    attachments: [{ filename: 'b2b_leads.csv', content: btoa(csvData), encoding: 'base64' }]
+    attachments: [{ filename: 'b2b_leads.csv', content: safeBase64, encoding: 'base64' }]
   };
 
   await fetch('https://api.emailit.com/v1/send', {
