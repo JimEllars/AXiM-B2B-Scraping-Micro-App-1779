@@ -10,12 +10,17 @@ export default {
       try {
         const { filters, email } = await request.json();
         
+        // Idempotency: Hashed combination of email and a basic timestamp for double-click prevention
+        const timestampWindow = Math.floor(Date.now() / 60000); // 1-minute window
+        const idempotencyKey = request.headers.get('Idempotency-Key') || btoa(`${email}:${timestampWindow}`).slice(0, 32);
+
         // Handle Stripe directly at the edge
         const stripeResponse = await fetch('https://api.stripe.com/v1/checkout/sessions', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${env.STRIPE_SECRET_KEY}`,
-            'Content-Type': 'application/x-www-form-urlencoded'
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Idempotency-Key': idempotencyKey
           },
           body: new URLSearchParams({
             'payment_method_types[]': 'card',
@@ -52,23 +57,43 @@ export default {
           return new Response(JSON.stringify({ error: "Payment unverified" }), { status: 402 });
         }
 
+        // Idempotency: Ensure we haven't already processed this session
+        if (session.metadata && session.metadata.fulfilled === 'true') {
+          return new Response(JSON.stringify({ status: "already_fulfilled" }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // Mark session as fulfilled in Stripe to prevent double processing
+        ctx.waitUntil(
+          fetch(`https://api.stripe.com/v1/checkout/sessions/${session_id}`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${env.STRIPE_SECRET_KEY}`,
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: new URLSearchParams({ 'metadata[fulfilled]': 'true' })
+          }).catch(err => console.error("Failed to update Stripe session metadata", err))
+        );
+
         const filters = JSON.parse(session.metadata.filters);
         const userEmail = session.metadata.email;
 
         // Execute Scraping Logic (Mocked external API call)
         const scrapedLeads = await executeScrape(env.SCRAPING_API_KEY, filters);
-        const csvData = convertToCSV(scrapedLeads);
+
+        // Data Sanitization Pipeline
+        const { cleanLeads, droppedCount } = sanitizeLeads(scrapedLeads);
+        const csvData = convertToCSV(cleanLeads);
 
         // ASYNC TASK A: Send Email to Customer via EmailIt (Decentralized)
         ctx.waitUntil(sendEmailItFulfillment(env.EMAILIT_API_KEY, userEmail, csvData, filters));
 
         // ASYNC TASK B: Dual-Benefit - Send Leads to AXiM Core for Internal CRM
-        ctx.waitUntil(syncToAximCore(env.AXIM_SERVICE_KEY, scrapedLeads, filters));
+        ctx.waitUntil(syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters));
 
         // ASYNC TASK C: Log Execution to Core Ledger
         ctx.waitUntil(logExecutionToLedger(env.AXIM_SERVICE_KEY, session_id, filters));
 
-        return new Response(JSON.stringify({ status: "fulfilled", count: scrapedLeads.length }), { 
+        return new Response(JSON.stringify({ status: "fulfilled", count: cleanLeads.length, dropped: droppedCount }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' }
         });
@@ -82,6 +107,47 @@ export default {
 };
 
 // --- HELPER FUNCTIONS ---
+
+function sanitizePhone(phone) {
+  if (!phone) return phone;
+  // E.164 formatting: Strip all non-digits except +
+  let cleaned = phone.replace(/[^\d+]/g, '');
+  if (cleaned.startsWith('+')) return cleaned;
+  // If US number without country code
+  if (cleaned.length === 10) return '+1' + cleaned;
+  return '+' + cleaned;
+}
+
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+function isValidEmail(email) {
+  return typeof email === 'string' && EMAIL_REGEX.test(email);
+}
+
+function sanitizeLeads(leads) {
+  const originalCount = leads.length;
+  const cleanLeads = leads.filter(lead => {
+    // Attempt to find and validate email
+    const emailKey = Object.keys(lead).find(k => k.toLowerCase().includes('email'));
+    if (emailKey && lead[emailKey]) {
+      return isValidEmail(lead[emailKey]);
+    }
+    return false; // Drop if no email or invalid
+  }).map(lead => {
+    // Format phones
+    const phoneKeys = Object.keys(lead).filter(k => k.toLowerCase().includes('phone'));
+    phoneKeys.forEach(k => {
+      if (lead[k]) {
+        lead[k] = sanitizePhone(lead[k]);
+      }
+    });
+    return lead;
+  });
+
+  return {
+    cleanLeads,
+    droppedCount: originalCount - cleanLeads.length
+  };
+}
 
 async function executeScrape(apiKey, filters) {
   try {

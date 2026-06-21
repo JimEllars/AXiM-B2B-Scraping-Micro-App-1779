@@ -130,7 +130,18 @@ export const useScraperStore = create((set, get) => ({
       }
       
       const data = await res.json();
-      addLog(`Extraction completed. ${data.count || estimatedLeads} leads found.`);
+
+      if (data.status === 'already_fulfilled') {
+        addLog("Mission Complete: Leads already dispatched (idempotency triggered).");
+        set({ fulfillmentStatus: 'completed' });
+        return;
+      }
+
+      if (data.dropped !== undefined) {
+        addLog(`[SYSTEM] Data scrub complete. ${data.dropped} corrupted records purged. ${data.count} clean records packed for delivery.`);
+      } else {
+        addLog(`Extraction completed. ${data.count || estimatedLeads} leads found.`);
+      }
       await orderService.updateOrderStatus(sessionId, 'COMPLETED', data.count || estimatedLeads);
       set({ fulfillmentStatus: 'completed' });
     } catch (err) {

@@ -8,8 +8,8 @@ export const logError = (anomalyType, errorDetails) => {
     event_payload: {
       event_type: anomalyType,
       severity: "HIGH",
-      error_message: errorDetails.message,
-      stack_trace: errorDetails.stack,
+      error_message: errorDetails?.message || String(errorDetails),
+      stack_trace: errorDetails?.stack || "",
       metadata: { route: window.location.pathname }
     }
   };
