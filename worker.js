@@ -1,0 +1,124 @@
+// worker.js (Cloudflare Worker Edge Logic - Deploy separately)
+// This file is provided as requested for your edge node deployment.
+
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+
+    // 1. STRIPE CHECKOUT ORCHESTRATION
+    if (url.pathname === '/api/checkout' && request.method === 'POST') {
+      try {
+        const { filters, email } = await request.json();
+        
+        // Handle Stripe directly at the edge
+        const stripeResponse = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${env.STRIPE_SECRET_KEY}`,
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: new URLSearchParams({
+            'payment_method_types[]': 'card',
+            'line_items[0][price_data][currency]': 'usd',
+            'line_items[0][price_data][product_data][name]': `B2B Leads: ${filters.industry} in ${filters.location}`,
+            'line_items[0][price_data][unit_amount]': '2900', // $29.00 Flat Rate
+            'line_items[0][quantity]': '1',
+            'mode': 'payment',
+            'success_url': `${env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+            'metadata[email]': email,
+            'metadata[filters]': JSON.stringify(filters)
+          })
+        });
+        
+        const session = await stripeResponse.json();
+        return new Response(JSON.stringify(session), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      } catch (error) {
+        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+
+    // 2. LEAD SCRAPING & DECENTRALIZED FULFILLMENT
+    if (url.pathname === '/api/fulfill' && request.method === 'POST') {
+      try {
+        const { session_id } = await request.json();
+        
+        // Verify Stripe Payment
+        const verify = await fetch(`https://api.stripe.com/v1/checkout/sessions/${session_id}`, {
+          headers: { 'Authorization': `Bearer ${env.STRIPE_SECRET_KEY}` }
+        });
+        const session = await verify.json();
+        
+        if (session.payment_status !== 'paid') {
+          return new Response(JSON.stringify({ error: "Payment unverified" }), { status: 402 });
+        }
+
+        const filters = JSON.parse(session.metadata.filters);
+        const userEmail = session.metadata.email;
+
+        // Execute Scraping Logic (Mocked external API call)
+        const scrapedLeads = await executeScrape(env.SCRAPING_API_KEY, filters);
+        const csvData = convertToCSV(scrapedLeads);
+
+        // ASYNC TASK A: Send Email to Customer via EmailIt (Decentralized)
+        ctx.waitUntil(sendEmailItFulfillment(env.EMAILIT_API_KEY, userEmail, csvData, filters));
+
+        // ASYNC TASK B: Dual-Benefit - Send Leads to AXiM Core for Internal CRM
+        ctx.waitUntil(syncToAximCore(env.AXIM_SERVICE_KEY, scrapedLeads, filters));
+
+        // ASYNC TASK C: Log Execution to Core Ledger
+        ctx.waitUntil(logExecutionToLedger(env.AXIM_SERVICE_KEY, session_id, filters));
+
+        return new Response(JSON.stringify({ status: "fulfilled", count: scrapedLeads.length }), { 
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+
+    return new Response("Not Found", { status: 404 });
+  }
+};
+
+// --- HELPER FUNCTIONS ---
+
+async function executeScrape(apiKey, filters) {
+  // Implementation for external scraping API (BrightData/Apify)
+  return [{ company: "Example Corp", phone: "555-0100", email: "contact@example.com" }];
+}
+
+function convertToCSV(data) {
+  if (!data || !data.length) return "";
+  const headers = Object.keys(data[0]).join(",");
+  const rows = data.map(obj => Object.values(obj).join(",")).join("\n");
+  return `${headers}\n${rows}`;
+}
+
+async function sendEmailItFulfillment(apiKey, email, csvData, filters) {
+  const payload = {
+    to: [{ email }],
+    subject: `Your B2B Lead List: ${filters.industry} / ${filters.location}`,
+    html: `<h1>Order Complete</h1><p>Your targeted lead list is attached.</p>`,
+    attachments: [{ filename: 'b2b_leads.csv', content: btoa(csvData), encoding: 'base64' }]
+  };
+
+  await fetch('https://api.emailit.com/v1/send', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+}
+
+async function syncToAximCore(aximKey, leads, filters) {
+  // Silent pipeline into Deskera / Albato via AXiM Core
+  await fetch('https://api.axim.us.com/v1/internal/leads/ingest', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${aximKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source: 'b2b_scraper_microapp', cohort: filters, records: leads })
+  });
+}
+
+async function logExecutionToLedger(aximKey, sessionId, filters) {
+  // Fire and forget logging
+}
