@@ -92,14 +92,19 @@ async function executeScrape(apiKey, filters) {
       keywords: filters.keywords
     };
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout for Edge
+
     const response = await fetch('https://api.apify.com/v2/actor-tasks/axim-scraper/run-sync-get-dataset-items', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`Scraper API failed with status: ${response.status}`);
@@ -113,15 +118,44 @@ async function executeScrape(apiKey, filters) {
 
     return data;
   } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error("Scrape execution timeout: The scraping task took too long and timed out at the edge.");
+    }
     throw new Error(`Scrape execution failed: ${err.message}`);
   }
 }
 
+function flattenObject(obj, prefix = '') {
+  return Object.keys(obj).reduce((acc, k) => {
+    const pre = prefix.length ? prefix + '_' : '';
+    if (typeof obj[k] === 'object' && obj[k] !== null && !Array.isArray(obj[k])) {
+      Object.assign(acc, flattenObject(obj[k], pre + k));
+    } else {
+      acc[pre + k] = obj[k];
+    }
+    return acc;
+  }, {});
+}
+
 function convertToCSV(data) {
   if (!data || !data.length) return "";
-  const headers = Object.keys(data[0]).join(",");
-  const rows = data.map(obj => Object.values(obj).join(",")).join("\n");
-  return `${headers}\n${rows}`;
+
+  const flattenedData = data.map(obj => flattenObject(obj));
+  const headerSet = new Set();
+  flattenedData.forEach(obj => Object.keys(obj).forEach(k => headerSet.add(k)));
+  const headers = Array.from(headerSet);
+
+  const escapeCSV = (val) => {
+    if (val === null || val === undefined) return '';
+    const str = String(val);
+    if (str.includes(',') || str.includes('\n') || str.includes('"')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const rows = flattenedData.map(obj => headers.map(h => escapeCSV(obj[h])).join(",")).join("\n");
+  return `${headers.join(",")}\n${rows}`;
 }
 
 async function sendEmailItFulfillment(apiKey, email, csvData, filters) {

@@ -1,12 +1,11 @@
 import React from 'react';
 import { useScraperStore } from '../store/useScraperStore';
 import SafeIcon from '../common/SafeIcon';
-import { FiDatabase, FiLock, FiMail, FiUsers, FiSearch, FiTarget, FiZap } from 'react-icons/fi';
+import { FiDatabase, FiLock, FiMail, FiUsers, FiSearch, FiTarget, FiZap, FiRefreshCcw } from 'react-icons/fi';
 
 export default function Wizard() {
-  const { filters, email, updateFilter, initiateCheckout, isProcessing, estimatedLeads } = useScraperStore();
+  const { filters, email, updateFilter, initiateCheckout, isProcessing, estimatedLeads, resetFilters } = useScraperStore();
   const [validationError, setValidationError] = React.useState('');
-
 
   const handleCheckout = () => {
     setValidationError('');
@@ -36,10 +35,20 @@ export default function Wizard() {
       
       <div className="flex justify-between items-start mb-10">
         <div>
-          <h2 className="text-2xl font-black text-white uppercase tracking-tight flex items-center gap-3 italic">
-            <SafeIcon icon={FiDatabase} className="text-axim-teal" />
-            Configuration
-          </h2>
+          <div className="flex items-center gap-4">
+            <h2 className="text-2xl font-black text-white uppercase tracking-tight flex items-center gap-3 italic">
+              <SafeIcon icon={FiDatabase} className="text-axim-teal" />
+              Configuration
+            </h2>
+            <button
+              onClick={resetFilters}
+              disabled={isProcessing}
+              className="text-[10px] font-mono text-gray-500 hover:text-white transition-colors flex items-center gap-1 mt-1 disabled:opacity-50"
+            >
+              <SafeIcon icon={FiRefreshCcw} className="w-3 h-3" />
+              CLEAR CONFIGURATION
+            </button>
+          </div>
           <p className="text-[9px] font-mono text-gray-600 uppercase tracking-widest mt-1">Define Target Cohort Parameters</p>
         </div>
         {estimatedLeads > 0 && (
@@ -61,7 +70,8 @@ export default function Wizard() {
                 onChange={(e) => updateFilter('industry', e.target.value.trimStart())}
                 onBlur={(e) => updateFilter('industry', e.target.value.trim())}
                 placeholder="e.g. Solar, Roofing, SaaS"
-                className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-1 focus:ring-axim-teal/20 focus:outline-none transition-all placeholder:text-gray-800"
+                disabled={isProcessing}
+                className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-1 focus:ring-axim-teal/20 focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-800 group-focus-within/input:text-axim-teal/40 transition-colors">
                 <SafeIcon icon={FiSearch} />
@@ -76,7 +86,8 @@ export default function Wizard() {
               onChange={(e) => updateFilter('location', e.target.value.trimStart())}
               onBlur={(e) => updateFilter('location', e.target.value.trim())}
               placeholder="City, State or Country"
-              className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-1 focus:ring-axim-teal/20 focus:outline-none transition-all placeholder:text-gray-800"
+              disabled={isProcessing}
+              className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-1 focus:ring-axim-teal/20 focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
         </div>
@@ -89,7 +100,8 @@ export default function Wizard() {
             <select 
               value={filters.size}
               onChange={(e) => updateFilter('size', e.target.value)}
-              className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:outline-none transition-all appearance-none cursor-pointer"
+              disabled={isProcessing}
+              className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:outline-none transition-all appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <option value="1-10">1-10 Employees</option>
               <option value="11-50">11-50 Employees</option>
@@ -107,7 +119,8 @@ export default function Wizard() {
               value={filters.keywords}
               onChange={(e) => updateFilter('keywords', e.target.value)}
               placeholder="e.g. CEO, Marketing Director"
-              className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:outline-none transition-all placeholder:text-gray-800"
+              disabled={isProcessing}
+              className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
         </div>
@@ -123,7 +136,8 @@ export default function Wizard() {
               value={email}
               onChange={(e) => useScraperStore.setState({ email: e.target.value })}
               placeholder="operator@company.com"
-              className="w-full bg-black/50 border border-white/10 text-white py-4 pr-4 pl-12 rounded-xl font-mono text-sm focus:border-axim-teal focus:outline-none transition-all placeholder:text-gray-800"
+              disabled={isProcessing}
+              className="w-full bg-black/50 border border-white/10 text-white py-4 pr-4 pl-12 rounded-xl font-mono text-sm focus:border-axim-teal focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
         </div>

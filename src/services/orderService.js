@@ -42,15 +42,35 @@ export const orderService = {
   async getRecentOrders(limit = 10) {
     try {
       const rows = await getRows(`${TAB}!A2:J100`);
+      const now = new Date();
+
       return rows
-        .map(row => ({
-          id: row[0],
-          email: row[1],
-          industry: row[2],
-          location: row[3],
-          status: row[7],
-          timestamp: row[8]
-        }))
+        .map(row => {
+          let status = row[7];
+          const timestamp = new Date(row[8]);
+
+          // Flag as ABANDONED if PENDING and older than 2 hours
+          if (status === 'PENDING') {
+            const hoursDiff = (now - timestamp) / (1000 * 60 * 60);
+            if (hoursDiff > 2) {
+              status = 'ABANDONED';
+
+              // Optionally trigger a silent background update to the sheet
+              // so the ledger itself reflects the new state
+              this.updateOrderStatus(row[0], 'ABANDONED').catch(() => {});
+            }
+          }
+
+          return {
+            id: row[0],
+            email: row[1],
+            industry: row[2],
+            location: row[3],
+            status,
+            timestamp: row[8]
+          };
+        })
+        .filter(order => order.status !== 'ABANDONED') // Filter out abandoned from recent orders display
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
         .slice(0, limit);
     } catch (e) {

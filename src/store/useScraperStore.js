@@ -28,6 +28,12 @@ export const useScraperStore = create((set, get) => ({
     });
   },
 
+  resetFilters: () => set({
+    filters: { industry: '', location: '', size: '1-10', keywords: '' },
+    email: '',
+    estimatedLeads: 0
+  }),
+
   addLog: (message) => set(state => ({
     logs: [...state.logs, { id: Date.now(), timestamp: new Date().toLocaleTimeString(), message }]
   })),
