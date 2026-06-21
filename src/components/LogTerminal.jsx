@@ -16,7 +16,9 @@ export default function LogTerminal() {
       <div className="flex flex-col gap-1">
         {logs.map(log => (
           <div key={log.id} className="flex gap-3">
-            <span className="text-gray-600">[{log.timestamp}]</span>
+            <span className="text-gray-600">
+              [<span className="text-axim-gold">{log.timestamp}</span>]
+            </span>
             <span className={log.message.includes('ERROR') ? 'text-red-500' : 'text-axim-teal'}>
               {log.message}
             </span>
