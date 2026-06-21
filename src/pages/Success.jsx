@@ -67,6 +67,10 @@ export default function Success() {
           <div className="flex flex-col items-center gap-4 text-center w-full py-8">
             <SafeIcon icon={FiAlertOctagon} className="text-red-500 text-5xl" />
             <h2 className="text-xl font-black uppercase italic text-red-400">Pipeline Failure</h2>
+            <p className="text-gray-400 text-sm max-w-sm mx-auto mt-2">
+              Please contact AXiM Support and reference your session ID:
+            </p>
+            <p className="font-mono text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-1 rounded mt-2">{sessionId || 'UNKNOWN'}</p>
           </div>
         )}
         

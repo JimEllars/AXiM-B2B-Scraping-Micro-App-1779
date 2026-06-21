@@ -59,11 +59,18 @@ export const useScraperStore = create((set, get) => ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filters, email, orderId })
       });
+      if (!res.ok) {
+        throw new Error(`Checkout API failed with status ${res.status}`);
+      }
       const data = await res.json();
-      if (data.url) window.location.href = data.url; 
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error("No checkout URL returned from API");
+      }
     } catch (err) {
       logError("CHECKOUT_FAILURE", err);
-      addLog("CHECKOUT_ERROR: PROTOCOL_ABORTED");
+      addLog(`CHECKOUT_ERROR: ${err.message || 'PROTOCOL_ABORTED'}`);
     } finally {
       set({ isProcessing: false });
     }
@@ -111,11 +118,17 @@ export const useScraperStore = create((set, get) => ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId })
       });
-      if (!res.ok) throw new Error("API_ERROR");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Fulfillment failed with status ${res.status}`);
+      }
       
-      await orderService.updateOrderStatus(sessionId, 'COMPLETED', estimatedLeads);
+      const data = await res.json();
+      addLog(`Extraction completed. ${data.count || estimatedLeads} leads found.`);
+      await orderService.updateOrderStatus(sessionId, 'COMPLETED', data.count || estimatedLeads);
       set({ fulfillmentStatus: 'completed' });
     } catch (err) {
+      logError("FULFILLMENT_FAILURE", err);
       set({ fulfillmentStatus: 'error' });
       addLog(`ERR: ${err.message}`);
       await orderService.updateOrderStatus(sessionId, 'FAILED');
