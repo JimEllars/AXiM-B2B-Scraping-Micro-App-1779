@@ -5,7 +5,11 @@ const CHAT_ID = import.meta.env.VITE_CHAT_ID;
 let cached = { token: null, exp: 0 };
 let tokenPromise = null;
 
+
 export async function getAccessToken() {
+  if (!TOKEN_URL || !SHEET_ID) {
+    throw new Error("Configuration Error: Missing TOKEN_URL or SHEET_ID environment variables. Adapter connection aborted.");
+  }
   if (cached.token && Date.now() < cached.exp) return cached.token;
   if (tokenPromise) return tokenPromise;
 

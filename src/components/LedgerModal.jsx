@@ -67,8 +67,10 @@ export default function LedgerModal({ isOpen, onClose }) {
 
             <div className="max-h-[60vh] overflow-y-auto p-4 space-y-3">
               {loading ? (
-                <div className="py-20 text-center text-[10px] font-mono text-gray-600 animate-pulse uppercase tracking-widest">
-                  Retrieving Encrypted Records...
+                <div className="py-20 text-center flex justify-center items-center">
+                  <div className="animate-pulse font-mono tracking-widest text-[10px] text-gray-600">
+                    Retrieving Encrypted Records...
+                  </div>
                 </div>
               ) : filteredOrders.length === 0 ? (
                 <div className="py-20 text-center text-[10px] font-mono text-gray-600 uppercase tracking-widest">
