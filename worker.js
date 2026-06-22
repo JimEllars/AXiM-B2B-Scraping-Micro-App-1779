@@ -12,7 +12,7 @@ export default {
 
     if (request.method === 'OPTIONS') {
       if (!env.FRONTEND_URL) {
-         return new Response(JSON.stringify({ error: "Configuration Error: Missing Frontend Origin" }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+         return new Response(JSON.stringify({ error: "Configuration Error: Missing Frontend Origin" }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
       return new Response(null, { status: 204, headers: corsHeaders });
     }
@@ -21,7 +21,7 @@ export default {
 
     if (url.pathname.startsWith('/api/')) {
       if (!env.FRONTEND_URL) {
-        return new Response(JSON.stringify({ error: "Configuration Error: Missing Frontend Origin" }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: "Configuration Error: Missing Frontend Origin" }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
       const origin = request.headers.get('Origin');
       if (origin !== env.FRONTEND_URL) {
@@ -96,7 +96,8 @@ export default {
         const session = await stripeResponse.json();
         return new Response(JSON.stringify(session), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        const errorHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
+        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: errorHeaders });
       }
     }
 
@@ -156,7 +157,8 @@ export default {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        const errorHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
+        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: errorHeaders });
       }
     }
 
