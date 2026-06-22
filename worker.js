@@ -5,18 +5,24 @@ export default {
   async fetch(request, env, ctx) {
 
     const corsHeaders = {
-      'Access-Control-Allow-Origin': env.FRONTEND_URL || '*',
+      'Access-Control-Allow-Origin': env.FRONTEND_URL,
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key',
     };
 
     if (request.method === 'OPTIONS') {
+      if (!env.FRONTEND_URL) {
+         return new Response(JSON.stringify({ error: "Configuration Error: Missing Frontend Origin" }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
       return new Response(null, { status: 204, headers: corsHeaders });
     }
 
     const url = new URL(request.url);
 
     if (url.pathname.startsWith('/api/')) {
+      if (!env.FRONTEND_URL) {
+        return new Response(JSON.stringify({ error: "Configuration Error: Missing Frontend Origin" }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
       const origin = request.headers.get('Origin');
       if (origin !== env.FRONTEND_URL) {
         return new Response(JSON.stringify({ error: "Forbidden: Invalid Origin" }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -137,13 +143,13 @@ export default {
         const csvData = convertToCSV(cleanLeads);
 
         // ASYNC TASK A: Send Email to Customer via EmailIt (Decentralized)
-        ctx.waitUntil(sendEmailItFulfillment(env.EMAILIT_API_KEY, userEmail, csvData, filters));
+        ctx.waitUntil(safeExecuteWithTelemetry('sendEmailItFulfillment', () => sendEmailItFulfillment(env.EMAILIT_API_KEY, userEmail, csvData, filters), env));
 
         // ASYNC TASK B: Dual-Benefit - Send Leads to AXiM Core for Internal CRM
-        ctx.waitUntil(syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters));
+        ctx.waitUntil(safeExecuteWithTelemetry('syncToAximCore', () => syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters), env));
 
         // ASYNC TASK C: Log Execution to Core Ledger
-        ctx.waitUntil(logExecutionToLedger(env.AXIM_SERVICE_KEY, session_id, filters));
+        ctx.waitUntil(safeExecuteWithTelemetry('logExecutionToLedger', () => logExecutionToLedger(env.AXIM_SERVICE_KEY, session_id, filters), env));
 
         return new Response(JSON.stringify({ status: "fulfilled", count: cleanLeads.length, dropped: droppedCount }), {
           status: 200,
@@ -159,6 +165,38 @@ export default {
 };
 
 // --- HELPER FUNCTIONS ---
+
+async function safeExecuteWithTelemetry(taskName, taskFn, env) {
+  try {
+    await taskFn();
+  } catch (error) {
+    console.error(`Background task ${taskName} failed:`, error);
+    try {
+      const payload = {
+        telemetry_envelope: {
+          project_id: "AXIM_B2B_SCRAPER",
+          environment: "production",
+          timestamp: new Date().toISOString()
+        },
+        event_payload: {
+          event_type: "BACKGROUND_TASK_FAILURE",
+          severity: "HIGH",
+          error_message: error.message,
+          stack_trace: error.stack || "",
+          metadata: { component: taskName }
+        }
+      };
+      await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } catch (telemetryError) {
+      console.error("Failed to send telemetry for background task failure", telemetryError);
+    }
+  }
+}
+
 
 function sanitizePhone(phone) {
   if (!phone) return phone;
@@ -293,39 +331,38 @@ async function sendEmailItFulfillment(apiKey, email, csvData, filters) {
     attachments: [{ filename: 'b2b_leads.csv', content: safeBase64, encoding: 'base64' }]
   };
 
-  await fetch('https://api.emailit.com/v1/send', {
+  const response = await fetch('https://api.emailit.com/v1/send', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
+  if (!response.ok) throw new Error(`EmailIt API failed with status ${response.status}`);
 }
 
 async function syncToAximCore(aximKey, leads, filters) {
   // Silent pipeline into Deskera / Albato via AXiM Core
-  await fetch('https://api.axim.us.com/v1/internal/leads/ingest', {
+  const response = await fetch('https://api.axim.us.com/v1/internal/leads/ingest', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${aximKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ source: 'b2b_scraper_microapp', cohort: filters, records: leads })
   });
+  if (!response.ok) throw new Error(`Sync to AXiM Core failed with status ${response.status}`);
 }
 
 async function logExecutionToLedger(aximKey, sessionId, filters) {
-  try {
-    const payload = {
-      session_id: sessionId,
-      filters: filters,
-      timestamp: new Date().toISOString()
-    };
+  const payload = {
+    session_id: sessionId,
+    filters: filters,
+    timestamp: new Date().toISOString()
+  };
 
-    await fetch('https://api.axim.us.com/v1/ledger/log', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${aximKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-  } catch (err) {
-    console.error("Ledger logging failed", err);
-  }
+  const response = await fetch('https://api.axim.us.com/v1/ledger/log', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${aximKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) throw new Error(`Ledger logging failed with status ${response.status}`);
 }

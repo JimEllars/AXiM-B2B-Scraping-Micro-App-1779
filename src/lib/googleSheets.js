@@ -3,18 +3,29 @@ const TOKEN_URL = import.meta.env.VITE_GRETA_TOKEN_URL;
 const CHAT_ID = import.meta.env.VITE_CHAT_ID;
 
 let cached = { token: null, exp: 0 };
+let tokenPromise = null;
 
 export async function getAccessToken() {
   if (cached.token && Date.now() < cached.exp) return cached.token;
-  const res = await fetch(TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chatId: CHAT_ID }),
-  });
-  const json = await res.json();
-  if (!res.ok || !json.success) throw new Error(json.error || 'token failed');
-  cached = { token: json.access_token, exp: Date.now() + (json.expires_in - 60) * 1000 };
-  return cached.token;
+  if (tokenPromise) return tokenPromise;
+
+  tokenPromise = (async () => {
+    try {
+      const res = await fetch(TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId: CHAT_ID }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'token failed');
+      cached = { token: json.access_token, exp: Date.now() + (json.expires_in - 60) * 1000 };
+      return cached.token;
+    } finally {
+      tokenPromise = null;
+    }
+  })();
+
+  return tokenPromise;
 }
 
 export async function sheetsRequest(path, init = {}) {
