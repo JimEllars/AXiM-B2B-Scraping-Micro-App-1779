@@ -58,10 +58,10 @@ export default function LedgerModal({ isOpen, onClose }) {
             <div className="p-4 border-b border-white/5">
               <input
                 type="text"
-                placeholder="[SEARCH FILTER // TARGET SECTOR OR REGION]"
+                placeholder="[SEARCH LEDGER COHORT // TARGET SECTOR OR REGION]"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-black/50 border border-white/10 text-white p-3 font-mono font-bold text-xs focus:border-axim-teal outline-none transition-colors"
+                className="w-full bg-black/50 border border-white/10 text-axim-teal p-3 font-mono text-xs focus:border-axim-teal focus:outline-none placeholder:text-gray-700 mb-4"
               />
             </div>
 

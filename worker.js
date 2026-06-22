@@ -3,12 +3,23 @@
 
 export default {
   async fetch(request, env, ctx) {
+
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': env.FRONTEND_URL || '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key',
+    };
+
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: corsHeaders });
+    }
+
     const url = new URL(request.url);
 
     if (url.pathname.startsWith('/api/')) {
       const origin = request.headers.get('Origin');
       if (origin !== env.FRONTEND_URL) {
-        return new Response(JSON.stringify({ error: "Forbidden: Invalid Origin" }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: "Forbidden: Invalid Origin" }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
       const missingKeys = [];
@@ -36,12 +47,12 @@ export default {
         ctx.waitUntil(
           fetch('https://api.axim.us.com/v1/telemetry/ingest', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
           }).catch(() => {})
         );
 
-        return new Response(JSON.stringify({ error: "Service Unavailable" }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: "Service Unavailable" }), { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
 
@@ -77,9 +88,9 @@ export default {
         });
         
         const session = await stripeResponse.json();
-        return new Response(JSON.stringify(session), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify(session), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
 
@@ -95,12 +106,12 @@ export default {
         const session = await verify.json();
         
         if (session.payment_status !== 'paid') {
-          return new Response(JSON.stringify({ error: "Payment unverified" }), { status: 402 });
+          return new Response(JSON.stringify({ error: "Payment unverified" }), { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
         // Idempotency: Ensure we haven't already processed this session
         if (session.metadata && session.metadata.fulfilled === 'true') {
-          return new Response(JSON.stringify({ status: "already_fulfilled" }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          return new Response(JSON.stringify({ status: "already_fulfilled" }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
         // Mark session as fulfilled in Stripe to prevent double processing
@@ -136,14 +147,14 @@ export default {
 
         return new Response(JSON.stringify({ status: "fulfilled", count: cleanLeads.length, dropped: droppedCount }), {
           status: 200,
-          headers: { 'Content-Type': 'application/json' }
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
 
-    return new Response("Not Found", { status: 404 });
+    return new Response("Not Found", { status: 404, headers: corsHeaders });
   }
 };
 
@@ -254,7 +265,7 @@ function convertToCSV(data) {
 
   const escapeCSV = (val) => {
     if (val === null || val === undefined) return '';
-    const str = String(val).replace(/\r/g, ' ');
+    const str = String(val).replace(/\r/g, '');
     if (str.includes(',') || str.includes('\n') || str.includes('"')) {
       return `"${str.replace(/"/g, '""')}"`;
     }
