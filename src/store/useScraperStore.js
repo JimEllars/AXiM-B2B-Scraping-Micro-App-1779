@@ -79,7 +79,7 @@ export const useScraperStore = create((set, get) => ({
         message: err.message || 'PROTOCOL_ABORTED',
         stack: err.stack || JSON.stringify(err)
       });
-      addLog(`CHECKOUT_ERROR: ${err.message || 'PROTOCOL_ABORTED'}`);
+      addLog(`[GATEWAY_HANDSHAKE_FAULT] CHECKOUT_ERROR: ${err.message || 'PROTOCOL_ABORTED'}`);
     } finally {
       set({ isProcessing: false });
     }
@@ -153,7 +153,7 @@ export const useScraperStore = create((set, get) => ({
         stack: err.stack || JSON.stringify(err)
       });
       set({ fulfillmentStatus: 'error' });
-      addLog(`ERR: ${err.message}`);
+      addLog(`[EXTRACTION_PIPELINE_TIMEOUT] ERR: ${err.message}`);
       await orderService.updateOrderStatus(sessionId, 'FAILED');
     }
   }
