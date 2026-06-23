@@ -173,6 +173,8 @@ async function safeExecuteWithTelemetry(taskName, taskFn, env, runtimeParams = {
     await taskFn();
   } catch (error) {
     console.error(`Background task ${taskName} failed:`, error);
+
+    let payloadString;
     try {
       const payload = {
         telemetry_envelope: {
@@ -188,10 +190,17 @@ async function safeExecuteWithTelemetry(taskName, taskFn, env, runtimeParams = {
           metadata: { component: taskName, execution_timestamp: new Date().toISOString(), runtime_parameters: runtimeParams }
         }
       };
+      payloadString = JSON.stringify(payload);
+    } catch (e) {
+      console.error("Failed to serialize telemetry payload", e);
+      return;
+    }
+
+    try {
       await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: payloadString
       });
     } catch (telemetryError) {
       console.error("Failed to send telemetry for background task failure", telemetryError);
@@ -201,13 +210,21 @@ async function safeExecuteWithTelemetry(taskName, taskFn, env, runtimeParams = {
 
 
 function sanitizePhone(phone) {
-  if (!phone) return phone;
+  if (!phone) return null;
   // E.164 formatting: Strip all non-digits except +
   let cleaned = phone.replace(/[^\d+]/g, '');
-  if (cleaned.startsWith('+')) return cleaned;
-  // If US number without country code
-  if (cleaned.length === 10) return '+1' + cleaned;
-  return '+' + cleaned;
+  if (!cleaned.startsWith('+')) {
+    if (cleaned.length === 10) {
+      cleaned = '+1' + cleaned;
+    } else {
+      cleaned = '+' + cleaned;
+    }
+  }
+  const e164Regex = /^\+[1-9]\d{1,14}$/;
+  if (e164Regex.test(cleaned)) {
+    return cleaned;
+  }
+  return null;
 }
 
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -230,7 +247,12 @@ function sanitizeLeads(leads) {
     const phoneKeys = exactPhoneKeys.length > 0 ? exactPhoneKeys : Object.keys(lead).filter(k => k.toLowerCase().includes('phone'));
     phoneKeys.forEach(k => {
       if (lead[k]) {
-        lead[k] = sanitizePhone(lead[k]);
+        const sanitized = sanitizePhone(lead[k]);
+        if (sanitized) {
+          lead[k] = sanitized;
+        } else {
+          delete lead[k];
+        }
       }
     });
     return lead;
