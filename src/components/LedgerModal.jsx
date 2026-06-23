@@ -63,6 +63,9 @@ export default function LedgerModal({ isOpen, onClose }) {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full bg-black/50 border border-white/10 text-axim-teal p-3 font-mono text-xs focus:border-axim-teal focus:outline-none placeholder:text-gray-700 mb-4"
               />
+              <div className="text-[9px] font-mono text-gray-500 uppercase tracking-wider mb-2">
+                [LEDGER MATCHES: {filteredOrders.length} OF {orders.length} ACTIVE COHORTS FOUND]
+              </div>
             </div>
 
             <div className="max-h-[60vh] overflow-y-auto p-4 space-y-3">

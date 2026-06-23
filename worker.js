@@ -144,13 +144,13 @@ export default {
         const csvData = convertToCSV(cleanLeads);
 
         // ASYNC TASK A: Send Email to Customer via EmailIt (Decentralized)
-        ctx.waitUntil(safeExecuteWithTelemetry('sendEmailItFulfillment', () => sendEmailItFulfillment(env.EMAILIT_API_KEY, userEmail, csvData, filters), env));
+        ctx.waitUntil(safeExecuteWithTelemetry('sendEmailItFulfillment', () => sendEmailItFulfillment(env.EMAILIT_API_KEY, userEmail, csvData, filters), env, { userEmail, filters }));
 
         // ASYNC TASK B: Dual-Benefit - Send Leads to AXiM Core for Internal CRM
-        ctx.waitUntil(safeExecuteWithTelemetry('syncToAximCore', () => syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters), env));
+        ctx.waitUntil(safeExecuteWithTelemetry('syncToAximCore', () => syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters), env, { filters, leadCount: cleanLeads.length }));
 
         // ASYNC TASK C: Log Execution to Core Ledger
-        ctx.waitUntil(safeExecuteWithTelemetry('logExecutionToLedger', () => logExecutionToLedger(env.AXIM_SERVICE_KEY, session_id, filters), env));
+        ctx.waitUntil(safeExecuteWithTelemetry('logExecutionToLedger', () => logExecutionToLedger(env.AXIM_SERVICE_KEY, session_id, filters), env, { session_id, filters }));
 
         return new Response(JSON.stringify({ status: "fulfilled", count: cleanLeads.length, dropped: droppedCount }), {
           status: 200,
@@ -162,13 +162,13 @@ export default {
       }
     }
 
-    return new Response("Not Found", { status: 404, headers: corsHeaders });
+    return new Response("Not Found", { status: 404, headers: { ...corsHeaders, 'Content-Type': 'text/plain' } });
   }
 };
 
 // --- HELPER FUNCTIONS ---
 
-async function safeExecuteWithTelemetry(taskName, taskFn, env) {
+async function safeExecuteWithTelemetry(taskName, taskFn, env, runtimeParams = {}) {
   try {
     await taskFn();
   } catch (error) {
@@ -185,7 +185,7 @@ async function safeExecuteWithTelemetry(taskName, taskFn, env) {
           severity: "HIGH",
           error_message: error.message,
           stack_trace: error.stack || "",
-          metadata: { component: taskName }
+          metadata: { component: taskName, execution_timestamp: new Date().toISOString(), runtime_parameters: runtimeParams }
         }
       };
       await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
@@ -219,14 +219,15 @@ function sanitizeLeads(leads) {
   const originalCount = leads.length;
   const cleanLeads = leads.filter(lead => {
     // Attempt to find and validate email
-    const emailKey = Object.keys(lead).find(k => k.toLowerCase().includes('email'));
+    const emailKey = Object.keys(lead).find(k => k.toLowerCase() === 'email') || Object.keys(lead).find(k => k.toLowerCase().includes('email'));
     if (emailKey && lead[emailKey]) {
       return isValidEmail(lead[emailKey]);
     }
     return false; // Drop if no email or invalid
   }).map(lead => {
     // Format phones
-    const phoneKeys = Object.keys(lead).filter(k => k.toLowerCase().includes('phone'));
+    const exactPhoneKeys = Object.keys(lead).filter(k => k.toLowerCase() === 'phone');
+    const phoneKeys = exactPhoneKeys.length > 0 ? exactPhoneKeys : Object.keys(lead).filter(k => k.toLowerCase().includes('phone'));
     phoneKeys.forEach(k => {
       if (lead[k]) {
         lead[k] = sanitizePhone(lead[k]);
@@ -313,7 +314,7 @@ function convertToCSV(data) {
   };
 
   const rows = flattenedData.map(obj => headers.map(h => escapeCSV(obj[h])).join(",")).join("\n");
-  return `${headers.join(",")}\n${rows}`;
+  return `${headers.map(escapeCSV).join(",")}\n${rows}`;
 }
 
 async function sendEmailItFulfillment(apiKey, email, csvData, filters) {
