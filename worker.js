@@ -96,6 +96,7 @@ export default {
         const session = await stripeResponse.json();
         return new Response(JSON.stringify(session), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       } catch (error) {
+        logForegroundTelemetry(ctx, error, '/api/checkout');
         const errorHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
         return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: errorHeaders });
       }
@@ -157,6 +158,7 @@ export default {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       } catch (error) {
+        logForegroundTelemetry(ctx, error, '/api/fulfill');
         const errorHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
         return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: errorHeaders });
       }
@@ -390,4 +392,38 @@ async function logExecutionToLedger(aximKey, sessionId, filters) {
     body: JSON.stringify(payload)
   });
   if (!response.ok) throw new Error(`Ledger logging failed with status ${response.status}`);
+}
+
+
+function logForegroundTelemetry(ctx, error, routePath) {
+  ctx.waitUntil(
+    (async () => {
+      try {
+        const payload = {
+          telemetry_envelope: {
+            project_id: "AXIM_B2B_SCRAPER",
+            environment: "production",
+            timestamp: new Date().toISOString()
+          },
+          event_payload: {
+            event_type: "ROUTE_EXECUTION_FAILURE",
+            severity: "HIGH",
+            error_message: error.message || String(error),
+            stack_trace: error.stack || "",
+            metadata: {
+              route: routePath,
+              execution_timestamp: new Date().toISOString()
+            }
+          }
+        };
+        await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch (telemetryError) {
+        console.error("Foreground telemetry dispatch failed", telemetryError);
+      }
+    })()
+  );
 }

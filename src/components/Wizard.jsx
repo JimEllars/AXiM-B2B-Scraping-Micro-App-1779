@@ -52,9 +52,14 @@ export default function Wizard() {
           <p className="text-[9px] font-mono text-gray-600 uppercase tracking-widest mt-1">Define Target Cohort Parameters</p>
         </div>
         {estimatedLeads > 0 && (
-          <div className="text-right bg-axim-teal/5 border border-axim-teal/10 px-4 py-2 rounded-xl">
-            <p className="text-[8px] font-bold text-axim-teal uppercase tracking-widest">Availability</p>
-            <p className="text-xl font-mono text-white leading-none mt-1">{estimatedLeads.toLocaleString()}</p>
+          <div>
+            <div className="text-right bg-axim-teal/5 border border-axim-teal/10 px-4 py-2 rounded-xl inline-block w-full">
+              <p className="text-[8px] font-bold text-axim-teal uppercase tracking-widest">Availability</p>
+              <p className="text-xl font-mono text-white leading-none mt-1">{estimatedLeads.toLocaleString()}</p>
+            </div>
+            <p className="text-[6px] font-mono text-gray-600 uppercase tracking-widest mt-1 text-right">
+              [NODES MATCHED BY TARGET DENSITY // CALCULATION SEGMENT ACTIVE]
+            </p>
           </div>
         )}
       </div>
