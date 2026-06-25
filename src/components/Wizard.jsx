@@ -140,7 +140,8 @@ export default function Wizard() {
             <input 
               type="email" 
               value={email}
-              onChange={(e) => useScraperStore.setState({ email: e.target.value })}
+              onChange={(e) => useScraperStore.setState({ email: e.target.value.trimStart() })}
+              onBlur={(e) => useScraperStore.setState({ email: e.target.value.trim() })}
               placeholder="operator@company.com"
               disabled={isProcessing}
               className="w-full bg-black/50 border border-white/10 text-white py-4 pr-4 pl-12 rounded-xl font-mono text-sm focus:border-axim-teal focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
