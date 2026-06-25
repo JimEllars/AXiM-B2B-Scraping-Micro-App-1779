@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useScraperStore } from '../store/useScraperStore';
 import LogTerminal from '../components/LogTerminal';
@@ -11,8 +11,13 @@ export default function Success() {
   const sessionId = searchParams.get('session_id');
   const { fulfillmentStatus, triggerFulfillment, filters } = useScraperStore();
 
+  const extractionTriggered = useRef(false);
+
   useEffect(() => {
-    if (sessionId) triggerFulfillment(sessionId);
+    if (sessionId && !extractionTriggered.current) {
+      extractionTriggered.current = true;
+      triggerFulfillment(sessionId);
+    }
   }, [sessionId, triggerFulfillment]);
 
   const feedbackStyle = {
@@ -88,9 +93,9 @@ export default function Success() {
                 </div>
               </div>
 
-              <button className="flex items-center gap-2 bg-white/5 border border-white/10 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all text-white mx-auto">
+              <Link to="/" className="flex items-center gap-2 bg-white/5 border border-white/10 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all text-white mx-auto w-fit">
                 <SafeIcon icon={FiExternalLink} /> View Order History
-              </button>
+              </Link>
             </div>
           </div>
         )}

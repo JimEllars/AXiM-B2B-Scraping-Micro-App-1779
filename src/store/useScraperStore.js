@@ -39,7 +39,8 @@ export const useScraperStore = create((set, get) => ({
   resetFilters: () => set({
     filters: { industry: '', location: '', size: '1-10', keywords: '' },
     email: '',
-    estimatedLeads: 0
+    estimatedLeads: 0,
+    idempotencyKey: generateIdempotencyKey()
   }),
 
   addLog: (message) => set(state => ({
@@ -82,6 +83,7 @@ export const useScraperStore = create((set, get) => ({
       }
       const data = await res.json();
       if (data.url) {
+        set({ idempotencyKey: generateIdempotencyKey() });
         window.location.href = data.url;
       } else {
         throw new Error("No checkout URL returned from API");
