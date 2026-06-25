@@ -385,7 +385,10 @@ function convertToCSV(data) {
 
   const escapeCSV = (val) => {
     if (val === null || val === undefined) return '';
-    const str = String(val).replace(/\r/g, '');
+    let str = String(val).replace(/\r/g, '');
+    if (['=', '+', '-', '@'].includes(str[0])) {
+      str = "'" + str;
+    }
     if (str.includes(',') || str.includes('\n') || str.includes('"')) {
       return `"${str.replace(/"/g, '""')}"`;
     }

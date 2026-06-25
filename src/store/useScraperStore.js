@@ -144,7 +144,7 @@ export const useScraperStore = create((set, get) => ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId })
-      });
+      }).catch(err => ({ _isNetworkError: true, error: err }));
 
       const fastCheck = new Promise(resolve => setTimeout(() => resolve('TIMEOUT'), 2500));
 
@@ -152,6 +152,9 @@ export const useScraperStore = create((set, get) => ({
 
       if (result !== 'TIMEOUT') {
         const res = result;
+        if (res._isNetworkError) {
+          throw new Error(`Network failure: ${res.error.message}`);
+        }
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
           throw new Error(errorData.error || `Fulfillment failed with status ${res.status}`);
@@ -195,6 +198,9 @@ export const useScraperStore = create((set, get) => ({
 
       const finishFetch = async () => {
         const res = await fetchPromise;
+        if (res._isNetworkError) {
+          throw new Error(`Network failure: ${res.error.message}`);
+        }
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
           throw new Error(errorData.error || `Fulfillment failed with status ${res.status}`);
@@ -203,7 +209,11 @@ export const useScraperStore = create((set, get) => ({
         fetchDone = true;
       };
 
-      const fetchTask = finishFetch();
+      let fetchError = null;
+      const fetchTask = finishFetch().catch(err => {
+        fetchError = err;
+        fetchDone = true;
+      });
 
       for (const step of steps) {
         if (fetchDone) break; // If fetch completes early, stop artificial logs
@@ -213,6 +223,10 @@ export const useScraperStore = create((set, get) => ({
 
       // Wait for fetch to complete if it hasn't yet
       await fetchTask;
+
+      if (fetchError) {
+        throw fetchError;
+      }
 
       if (data.status === 'already_fulfilled') {
         addLog("[SYSTEM] LEDGER RECONCILED. DISPATCH ALREADY COMPLETED.");
