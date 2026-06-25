@@ -4,7 +4,8 @@ import SafeIcon from '../common/SafeIcon';
 import { FiDatabase, FiLock, FiMail, FiUsers, FiSearch, FiTarget, FiZap, FiRefreshCcw } from 'react-icons/fi';
 
 export default function Wizard() {
-  const { filters, email, updateFilter, initiateCheckout, isProcessing, estimatedLeads, resetFilters } = useScraperStore();
+  if (typeof window !== 'undefined') window.useScraperStore = useScraperStore;
+  const { filters, email, updateFilter, initiateCheckout, isProcessing, estimatedLeads, resetFilters, checkoutError } = useScraperStore();
   const [validationError, setValidationError] = React.useState('');
 
   const handleCheckout = () => {
@@ -149,6 +150,11 @@ export default function Wizard() {
 
         <div className="pt-6">
           {validationError && <p className="text-red-500 text-xs font-mono mb-4 text-center">{validationError}</p>}
+          {checkoutError === 'RATE_LIMIT_EXCEEDED' && (
+            <div className="bg-red-500/10 border border-red-500 text-red-500 p-3 rounded-lg mb-4 text-center">
+              <p className="text-[10px] font-mono font-bold uppercase tracking-[0.2em]">[NETWORK REJECTED] RATE LIMIT EXCEEDED. PLEASE WAIT 60 SECONDS.</p>
+            </div>
+          )}
           <button 
             onClick={handleCheckout}
             disabled={isProcessing}

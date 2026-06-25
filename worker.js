@@ -20,21 +20,21 @@ function checkRateLimit(ip) {
 
   rateLimitMap.set(ip, record);
 
-  // Basic cleanup to prevent memory leaks in the Map
-  if (rateLimitMap.size > 10000) {
-     const cutoff = now - RATE_LIMIT_WINDOW_MS;
-     for (const [key, val] of rateLimitMap.entries()) {
-        if (val.firstRequestTime < cutoff) {
-           rateLimitMap.delete(key);
-        }
-     }
-  }
 
   return record.count <= RATE_LIMIT_MAX;
 }
 
 export default {
   async fetch(request, env, ctx) {
+    if (Math.random() < 0.1) {
+      const now = Date.now();
+      const cutoff = now - RATE_LIMIT_WINDOW_MS;
+      for (const [key, val] of rateLimitMap.entries()) {
+        if (val.firstRequestTime < cutoff) {
+          rateLimitMap.delete(key);
+        }
+      }
+    }
     const clientIP = request.headers.get('cf-connecting-ip') || 'unknown';
     const rateLimitUrl = new URL(request.url);
 
