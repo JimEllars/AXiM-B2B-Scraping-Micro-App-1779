@@ -5,7 +5,7 @@ import { FiDatabase, FiLock, FiMail, FiUsers, FiSearch, FiTarget, FiZap, FiRefre
 
 export default function Wizard() {
   if (typeof window !== 'undefined') window.useScraperStore = useScraperStore;
-  const { filters, email, updateFilter, initiateCheckout, isProcessing, estimatedLeads, resetFilters, checkoutError } = useScraperStore();
+  const { filters, email, updateFilter, initiateCheckout, isProcessing, estimatedLeads, resetFilters, checkoutError, hardResetSystem } = useScraperStore();
   const [validationError, setValidationError] = React.useState('');
 
   const handleCheckout = () => {
@@ -151,9 +151,19 @@ export default function Wizard() {
 
         <div className="pt-6">
           {validationError && <p className="text-red-500 text-xs font-mono mb-4 text-center">{validationError}</p>}
-          {checkoutError === 'RATE_LIMIT_EXCEEDED' && (
-            <div className="bg-red-500/10 border border-red-500 text-red-500 p-3 rounded-lg mb-4 text-center">
-              <p className="text-[10px] font-mono font-bold uppercase tracking-[0.2em]">[NETWORK REJECTED] RATE LIMIT EXCEEDED. PLEASE WAIT 60 SECONDS.</p>
+          {checkoutError && (
+            <div className="flex flex-col items-center mb-4">
+              {checkoutError === 'RATE_LIMIT_EXCEEDED' && (
+                <div className="bg-red-500/10 border border-red-500 text-red-500 p-3 rounded-lg text-center w-full mb-2">
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-[0.2em]">[NETWORK REJECTED] RATE LIMIT EXCEEDED. PLEASE WAIT 60 SECONDS.</p>
+                </div>
+              )}
+              <button
+                onClick={hardResetSystem}
+                className="text-[10px] font-mono text-gray-500 hover:text-red-400 transition-colors uppercase tracking-widest underline decoration-dashed underline-offset-4"
+              >
+                [SYSTEM STALL? INITIATE HARD RESET]
+              </button>
             </div>
           )}
           <button 
