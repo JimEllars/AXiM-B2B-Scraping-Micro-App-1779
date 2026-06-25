@@ -1,8 +1,52 @@
 // worker.js (Cloudflare Worker Edge Logic - Deploy separately)
 // This file is provided as requested for your edge node deployment.
 
+
+// --- RATE LIMITING ---
+const rateLimitMap = new Map();
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_WINDOW_MS = 60000;
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const record = rateLimitMap.get(ip) || { count: 0, firstRequestTime: now };
+
+  if (now - record.firstRequestTime > RATE_LIMIT_WINDOW_MS) {
+    record.count = 1;
+    record.firstRequestTime = now;
+  } else {
+    record.count += 1;
+  }
+
+  rateLimitMap.set(ip, record);
+
+  // Basic cleanup to prevent memory leaks in the Map
+  if (rateLimitMap.size > 10000) {
+     const cutoff = now - RATE_LIMIT_WINDOW_MS;
+     for (const [key, val] of rateLimitMap.entries()) {
+        if (val.firstRequestTime < cutoff) {
+           rateLimitMap.delete(key);
+        }
+     }
+  }
+
+  return record.count <= RATE_LIMIT_MAX;
+}
+
 export default {
   async fetch(request, env, ctx) {
+    const clientIP = request.headers.get('cf-connecting-ip') || 'unknown';
+    const rateLimitUrl = new URL(request.url);
+
+    if (['/api/checkout', '/api/fulfill'].includes(rateLimitUrl.pathname) && request.method === 'POST') {
+      if (!checkRateLimit(clientIP)) {
+        return new Response(JSON.stringify({ error: "Too Many Requests" }), {
+          status: 429,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': env.FRONTEND_URL || '*' }
+        });
+      }
+    }
+
 
     const corsHeaders = {
       'Access-Control-Allow-Origin': env.FRONTEND_URL,
@@ -105,8 +149,19 @@ export default {
     // 2. LEAD SCRAPING & DECENTRALIZED FULFILLMENT
     if (url.pathname === '/api/fulfill' && request.method === 'POST') {
       try {
+
         const { session_id } = await request.json();
         
+        // Strict Session ID Validation
+        const sessionRegex = /^cs_(test|live)_[a-zA-Z0-9]{20,60}$/;
+        if (!session_id || !sessionRegex.test(session_id)) {
+          return new Response(JSON.stringify({ error: "Bad Request: Invalid session ID format" }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+
+
         // Verify Stripe Payment
         const verify = await fetch(`https://api.stripe.com/v1/checkout/sessions/${session_id}`, {
           headers: { 'Authorization': `Bearer ${env.STRIPE_SECRET_KEY}` }
