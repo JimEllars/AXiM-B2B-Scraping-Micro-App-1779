@@ -2,6 +2,11 @@ import { create } from 'zustand';
 import { logError } from '../utils/telemetry';
 import { orderService } from '../services/orderService';
 
+
+const generateIdempotencyKey = () => {
+  return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+};
+
 export const useScraperStore = create((set, get) => ({
   filters: { industry: '', location: '', size: '1-10', keywords: '' },
   email: '',
@@ -11,6 +16,7 @@ export const useScraperStore = create((set, get) => ({
   fulfillmentStatus: 'idle',
   currentOrderId: null,
   logs: [],
+  idempotencyKey: generateIdempotencyKey(),
   
   updateFilter: (key, value) => {
     set(state => {
@@ -60,9 +66,13 @@ export const useScraperStore = create((set, get) => ({
       }
 
       // Handle real Stripe redirect if configured
+      const { idempotencyKey } = get();
       const res = await fetch('/api/checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey
+        },
         body: JSON.stringify({ filters, email, orderId })
       });
       if (!res.ok) {

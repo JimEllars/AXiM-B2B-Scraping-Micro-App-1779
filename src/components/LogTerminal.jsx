@@ -5,6 +5,30 @@ export default function LogTerminal() {
   const logs = useScraperStore(state => state.logs);
   const scrollRef = useRef(null);
 
+  const addLog = useScraperStore(state => state.addLog);
+
+  useEffect(() => {
+    let timeout1, timeout2, timeout3;
+    const isBooted = sessionStorage.getItem('terminal_booted');
+
+    if (!isBooted) {
+      timeout1 = setTimeout(() => addLog("[SYS_BOOT] INITIALIZING AXIM EDGE NODE..."), 400);
+      timeout2 = setTimeout(() => addLog("[NET_SYNC] ESTABLISHING SECURE HANDSHAKE WITH ONYX SWARM... [OK]"), 800);
+      timeout3 = setTimeout(() => {
+         addLog("[READY] TERMINAL AWAITING DIRECTIVE.");
+         sessionStorage.setItem('terminal_booted', 'true');
+      }, 1200);
+    } else {
+       addLog("[READY] TERMINAL AWAITING DIRECTIVE.");
+    }
+
+    return () => {
+      clearTimeout(timeout1);
+      clearTimeout(timeout2);
+      clearTimeout(timeout3);
+    };
+  }, []); // Empty dependency array ensures this runs only once on mount
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
