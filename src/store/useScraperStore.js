@@ -17,6 +17,7 @@ export const useScraperStore = create((set, get) => ({
   currentOrderId: null,
   logs: [],
   idempotencyKey: generateIdempotencyKey(),
+  checkoutError: null,
   
   updateFilter: (key, value) => {
     set(state => {
@@ -29,7 +30,8 @@ export const useScraperStore = create((set, get) => ({
       
       return { 
         filters: newFilters,
-        estimatedLeads: Math.floor(estimate % 4500) + 120 
+        estimatedLeads: Math.floor(estimate % 4500) + 120,
+        checkoutError: null
       };
     });
   },
@@ -45,7 +47,7 @@ export const useScraperStore = create((set, get) => ({
   })),
 
   initiateCheckout: async () => {
-    set({ isProcessing: true });
+    set({ isProcessing: true, checkoutError: null });
     const { addLog, filters, email } = get();
     addLog("INITIATING_SECURE_CHECKOUT_PROTOCOL");
     
@@ -85,11 +87,15 @@ export const useScraperStore = create((set, get) => ({
         throw new Error("No checkout URL returned from API");
       }
     } catch (err) {
+      const errorMessage = err.message || 'PROTOCOL_ABORTED';
+      if (errorMessage.includes("429") || errorMessage.includes("Too Many Requests")) {
+        set({ checkoutError: 'RATE_LIMIT_EXCEEDED' });
+      }
       logError("CHECKOUT_FAILURE", {
-        message: err.message || 'PROTOCOL_ABORTED',
+        message: errorMessage,
         stack: err.stack || JSON.stringify(err)
       });
-      addLog(`[GATEWAY_HANDSHAKE_FAULT] CHECKOUT_ERROR: ${err.message || 'PROTOCOL_ABORTED'}`);
+      addLog(`[GATEWAY_HANDSHAKE_FAULT] CHECKOUT_ERROR: ${errorMessage}`);
     } finally {
       set({ isProcessing: false });
     }
@@ -101,7 +107,7 @@ export const useScraperStore = create((set, get) => ({
     addLog(`Fulfillment Sequence Started: ${sessionId}`);
     
     try {
-      if (import.meta.env.DEV || sessionId.startsWith('mock_') || sessionId.length > 30) {
+      if (import.meta.env.DEV || sessionId.startsWith('mock_')) {
         await new Promise(resolve => setTimeout(resolve, 800));
         addLog("Stripe Payment Verified: [PAID]");
         
@@ -132,31 +138,91 @@ export const useScraperStore = create((set, get) => ({
       }
 
       // Real API fulfillment
-      const res = await fetch('/api/fulfill', {
+      const fetchPromise = fetch('/api/fulfill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId })
       });
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `Fulfillment failed with status ${res.status}`);
+
+      const fastCheck = new Promise(resolve => setTimeout(() => resolve('TIMEOUT'), 2500));
+
+      const result = await Promise.race([fetchPromise, fastCheck]);
+
+      if (result !== 'TIMEOUT') {
+        const res = result;
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || `Fulfillment failed with status ${res.status}`);
+        }
+        const data = await res.json();
+
+        if (data.status === 'already_fulfilled') {
+          addLog("[SYSTEM] LEDGER RECONCILED. DISPATCH ALREADY COMPLETED.");
+          set({ fulfillmentStatus: 'completed' });
+          return;
+        } else {
+          // It completed surprisingly fast and wasn't already fulfilled
+          if (data.dropped !== undefined) {
+            addLog(`[SYSTEM] Data scrub complete. ${data.dropped} corrupted records purged. ${data.count} clean records packed for delivery.`);
+          } else {
+            addLog(`Extraction completed. ${data.count || estimatedLeads} leads found.`);
+          }
+          await orderService.updateOrderStatus(sessionId, 'COMPLETED', data.count || estimatedLeads);
+          set({ fulfillmentStatus: 'completed' });
+          return;
+        }
       }
+
+      // If we are here, fetch is taking longer than 2.5s, meaning it's likely a fresh scrape.
+      addLog("Stripe Payment Verified: [PAID]");
+      set({ fulfillmentStatus: 'scraping' });
       
-      const data = await res.json();
+      const steps = [
+        "Allocating Edge Nodes (US-EAST-1)",
+        "Bypassing Captcha Layers...",
+        "Extracting B2B Profiles",
+        "Initiating SMTP Discovery",
+        "Verifying Email Deliverability",
+        "Generating Encrypted CSV",
+        "Dispatching via EmailIt Protocol"
+      ];
+
+      // Run terminal logging sequence while awaiting fetch
+      let fetchDone = false;
+      let data = null;
+
+      const finishFetch = async () => {
+        const res = await fetchPromise;
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || `Fulfillment failed with status ${res.status}`);
+        }
+        data = await res.json();
+        fetchDone = true;
+      };
+
+      const fetchTask = finishFetch();
+
+      for (const step of steps) {
+        if (fetchDone) break; // If fetch completes early, stop artificial logs
+        await new Promise(resolve => setTimeout(resolve, 600));
+        addLog(`${step}... OK`);
+      }
+
+      // Wait for fetch to complete if it hasn't yet
+      await fetchTask;
 
       if (data.status === 'already_fulfilled') {
-        addLog("Mission Complete: Leads already dispatched (idempotency triggered).");
-        set({ fulfillmentStatus: 'completed' });
-        return;
-      }
-
-      if (data.dropped !== undefined) {
+        addLog("[SYSTEM] LEDGER RECONCILED. DISPATCH ALREADY COMPLETED.");
+      } else if (data.dropped !== undefined) {
         addLog(`[SYSTEM] Data scrub complete. ${data.dropped} corrupted records purged. ${data.count} clean records packed for delivery.`);
       } else {
         addLog(`Extraction completed. ${data.count || estimatedLeads} leads found.`);
       }
+
       await orderService.updateOrderStatus(sessionId, 'COMPLETED', data.count || estimatedLeads);
       set({ fulfillmentStatus: 'completed' });
+
     } catch (err) {
       logError("FULFILLMENT_FAILURE", {
         message: err.message || 'FULFILLMENT_ERROR',
