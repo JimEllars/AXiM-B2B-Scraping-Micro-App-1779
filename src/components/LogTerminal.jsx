@@ -36,7 +36,7 @@ export default function LogTerminal() {
   }, [logs]);
 
   return (
-    <div className="w-full bg-black border border-white/5 rounded-lg p-4 font-mono text-[10px] h-48 overflow-y-auto mt-6 scrollbar-hide" ref={scrollRef}>
+    <div className="w-full bg-black border border-white/5 rounded-lg p-4 font-mono text-[10px] h-48 overflow-y-auto mt-6 scrollbar-hide scroll-smooth" ref={scrollRef}>
       <div className="flex flex-col gap-1">
         {logs.map(log => (
                     <div key={log.id} className="flex gap-3">

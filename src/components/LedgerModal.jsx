@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { orderService } from '../services/orderService';
 import SafeIcon from '../common/SafeIcon';
-import { FiX, FiActivity, FiClock, FiMapPin, FiCheckCircle } from 'react-icons/fi';
+import { FiX, FiActivity, FiClock, FiMapPin, FiCheckCircle, FiRefreshCcw } from 'react-icons/fi';
 
 export default function LedgerModal({ isOpen, onClose }) {
   const [orders, setOrders] = useState([]);
@@ -18,6 +18,14 @@ export default function LedgerModal({ isOpen, onClose }) {
       });
     }
   }, [isOpen]);
+
+  const handleRefresh = () => {
+    setLoading(true);
+    orderService.getRecentOrders(20).then(data => {
+      setOrders(data);
+      setLoading(false);
+    });
+  };
 
   const filteredOrders = orders.filter((order) => {
     if (!searchTerm) return true;
@@ -50,9 +58,14 @@ export default function LedgerModal({ isOpen, onClose }) {
                 <SafeIcon icon={FiActivity} className="text-axim-teal" />
                 <h2 className="text-sm font-black uppercase tracking-widest text-white italic">Public Ledger History</h2>
               </div>
-              <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
-                <SafeIcon icon={FiX} />
-              </button>
+              <div className="flex items-center gap-4">
+                <button onClick={handleRefresh} className="text-gray-500 hover:text-white transition-colors">
+                  <SafeIcon icon={FiRefreshCcw} />
+                </button>
+                <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
+                  <SafeIcon icon={FiX} />
+                </button>
+              </div>
             </div>
 
             <div className="p-4 border-b border-white/5">
