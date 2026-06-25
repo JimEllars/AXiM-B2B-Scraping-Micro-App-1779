@@ -193,7 +193,11 @@ export default {
         const userEmail = session.metadata.email;
 
         // Execute Scraping Logic (Mocked external API call)
-        const scrapedLeads = await executeScrape(env.SCRAPING_API_KEY, filters);
+        const extractionPromise = executeScrape(env.SCRAPING_API_KEY, filters);
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("UPSTREAM_TIMEOUT")), 25000)
+        );
+        const scrapedLeads = await Promise.race([extractionPromise, timeoutPromise]);
 
         // Data Sanitization Pipeline
         const { cleanLeads, droppedCount } = sanitizeLeads(scrapedLeads);
@@ -213,8 +217,43 @@ export default {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       } catch (error) {
-        logForegroundTelemetry(ctx, error, '/api/fulfill');
         const errorHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
+
+        if (error.message === "UPSTREAM_TIMEOUT") {
+          ctx.waitUntil(
+            (async () => {
+              try {
+                const payload = {
+                  telemetry_envelope: {
+                    project_id: "AXIM_B2B_SCRAPER",
+                    environment: "production",
+                    timestamp: new Date().toISOString()
+                  },
+                  event_payload: {
+                    event_type: "UPSTREAM_TIMEOUT_CRITICAL",
+                    severity: "CRITICAL",
+                    error_message: "External scraper exceeded edge execution limits",
+                    stack_trace: error.stack || "",
+                    metadata: {
+                      route: '/api/fulfill',
+                      execution_timestamp: new Date().toISOString()
+                    }
+                  }
+                };
+                await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload)
+                });
+              } catch (telemetryError) {
+                console.error("Critical telemetry dispatch failed", telemetryError);
+              }
+            })()
+          );
+          return new Response(JSON.stringify({ error: "Gateway Timeout: Upstream extraction exceeded time limits." }), { status: 504, headers: errorHeaders });
+        }
+
+        logForegroundTelemetry(ctx, error, '/api/fulfill');
         return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: errorHeaders });
       }
     }

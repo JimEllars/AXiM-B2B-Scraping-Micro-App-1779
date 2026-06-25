@@ -43,6 +43,18 @@ export const useScraperStore = create((set, get) => ({
     idempotencyKey: generateIdempotencyKey()
   }),
 
+  hardResetSystem: () => set({
+    filters: { industry: '', location: '', size: '1-10', keywords: '' },
+    email: '',
+    estimatedLeads: 0,
+    isProcessing: false,
+    checkoutError: null,
+    fulfillmentStatus: 'idle',
+    currentOrderId: null,
+    logs: [],
+    idempotencyKey: generateIdempotencyKey()
+  }),
+
   addLog: (message) => set(state => ({
     logs: [...state.logs, { id: Date.now(), timestamp: new Date().toLocaleTimeString(), message }]
   })),

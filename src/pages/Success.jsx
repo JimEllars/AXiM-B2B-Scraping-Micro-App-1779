@@ -63,7 +63,7 @@ export default function Success() {
                 Your encrypted lead cohort has been dispatched to your inbox.
               </p>
 
-              <div className="bg-[#141414] border border-white/10 p-4 rounded-xl mb-6 text-left w-full max-w-md mx-auto">
+              <div className="bg-[#141414] border border-axim-teal shadow-[0_0_15px_rgba(0,229,255,0.4)] p-4 rounded-xl mb-6 text-left w-full max-w-md mx-auto animate-[pulse_1.5s_ease-in-out_1]">
                 <h3 className="text-axim-teal text-[10px] font-black uppercase tracking-widest mb-3">Edge Receipt Manifest</h3>
                 <div className="grid grid-cols-2 gap-2 text-xs font-mono text-gray-300">
                   <div className="text-gray-500">Industry:</div>
