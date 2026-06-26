@@ -96,6 +96,12 @@ export default function Success() {
               <Link to="/" className="flex items-center gap-2 bg-white/5 border border-white/10 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all text-white mx-auto w-fit">
                 <SafeIcon icon={FiExternalLink} /> View Order History
               </Link>
+
+              {sessionId && (
+                <div className="text-gray-500 text-[10px] tracking-widest mt-4 font-mono">
+                  [ONYX SUPPORT HASH: {sessionId.slice(0, 8).toUpperCase()}]
+                </div>
+              )}
             </div>
           </div>
         )}
