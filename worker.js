@@ -1,3 +1,25 @@
+
+function maskEmailInString(str) {
+  if (typeof str !== 'string') return str;
+  return str.replace(/([a-zA-Z0-9._%+-]+)(@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, (match, localPart, domain) => {
+    return localPart[0] + '***' + domain;
+  });
+}
+
+function scrubPII(obj) {
+  if (typeof obj === 'string') {
+    return maskEmailInString(obj);
+  } else if (Array.isArray(obj)) {
+    return obj.map(scrubPII);
+  } else if (obj !== null && typeof obj === 'object') {
+    const newObj = {};
+    for (const key in obj) {
+      newObj[key] = scrubPII(obj[key]);
+    }
+    return newObj;
+  }
+  return obj;
+}
 // worker.js (Cloudflare Worker Edge Logic - Deploy separately)
 // This file is provided as requested for your edge node deployment.
 
@@ -23,6 +45,11 @@ function checkRateLimit(ip) {
 
   return record.count <= RATE_LIMIT_MAX;
 }
+
+
+
+
+
 
 export default {
   async fetch(request, env, ctx) {
@@ -199,15 +226,22 @@ export default {
         );
         const scrapedLeads = await Promise.race([extractionPromise, timeoutPromise]);
 
+        // --- MEMORY HARDENING ---
+        const safeLeads = scrapedLeads.slice(0, 5000);
+        let warningLog = undefined;
+        if (scrapedLeads.length > 5000) {
+            warningLog = "Cohort was truncated to preserve edge memory quotas.";
+        }
+
         // Data Sanitization Pipeline
-        const { cleanLeads, droppedCount } = sanitizeLeads(scrapedLeads);
+        const { cleanLeads, droppedCount } = sanitizeLeads(safeLeads);
         const csvData = convertToCSV(cleanLeads);
 
         // ASYNC TASK A: Send Email to Customer via EmailIt (Decentralized)
         ctx.waitUntil(safeExecuteWithTelemetry('sendEmailItFulfillment', () => sendEmailItFulfillment(env.EMAILIT_API_KEY, userEmail, csvData, filters), env, { userEmail, filters }));
 
         // ASYNC TASK B: Dual-Benefit - Send Leads to AXiM Core for Internal CRM
-        ctx.waitUntil(safeExecuteWithTelemetry('syncToAximCore', () => syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters), env, { filters, leadCount: cleanLeads.length }));
+        ctx.waitUntil(safeExecuteWithTelemetry('syncToAximCore', () => syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters, warningLog), env, { filters, leadCount: cleanLeads.length, warningLog }));
 
         // ASYNC TASK C: Log Execution to Core Ledger
         ctx.waitUntil(safeExecuteWithTelemetry('logExecutionToLedger', () => logExecutionToLedger(env.AXIM_SERVICE_KEY, session_id, filters), env, { session_id, filters }));
@@ -252,9 +286,9 @@ async function safeExecuteWithTelemetry(taskName, taskFn, env, runtimeParams = {
         event_payload: {
           event_type: "BACKGROUND_TASK_FAILURE",
           severity: "HIGH",
-          error_message: error.message,
-          stack_trace: error.stack || "",
-          metadata: { component: taskName, execution_timestamp: new Date().toISOString(), runtime_parameters: runtimeParams }
+          error_message: maskEmailInString(error.message),
+          stack_trace: maskEmailInString(error.stack || ""),
+          metadata: scrubPII({ component: taskName, execution_timestamp: new Date().toISOString(), runtime_parameters: runtimeParams })
         }
       };
       payloadString = JSON.stringify(payload);
@@ -434,12 +468,15 @@ async function sendEmailItFulfillment(apiKey, email, csvData, filters) {
   if (!response.ok) throw new Error(`EmailIt API failed with status ${response.status}`);
 }
 
-async function syncToAximCore(aximKey, leads, filters) {
+async function syncToAximCore(aximKey, leads, filters, warningLog) {
   // Silent pipeline into Deskera / Albato via AXiM Core
+  const payload = { source: 'b2b_scraper_microapp', cohort: filters, records: leads };
+  if (warningLog) payload.warning = warningLog;
+
   const response = await fetch('https://api.axim.us.com/v1/internal/leads/ingest', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${aximKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ source: 'b2b_scraper_microapp', cohort: filters, records: leads })
+    body: JSON.stringify(payload)
   });
   if (!response.ok) throw new Error(`Sync to AXiM Core failed with status ${response.status}`);
 }
@@ -480,13 +517,13 @@ function logForegroundTelemetry(ctx, error, routePath) {
             severity: isTimeout ? "CRITICAL" : "HIGH",
             error_message: isTimeout
               ? "External scraper exceeded edge execution limits (Apify is lagging, not our code)"
-              : (error.message || String(error)),
-            stack_trace: error.stack || "",
-            metadata: {
+              : maskEmailInString(error.message || String(error)),
+            stack_trace: maskEmailInString(error.stack || ""),
+            metadata: scrubPII({
               route: routePath,
               execution_timestamp: new Date().toISOString(),
               target_swarm: isTimeout ? "Onyx Swarm" : undefined
-            }
+            })
           }
         };
         await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
