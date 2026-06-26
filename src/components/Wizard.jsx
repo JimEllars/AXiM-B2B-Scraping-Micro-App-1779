@@ -153,9 +153,13 @@ export default function Wizard() {
           {validationError && <p className="text-red-500 text-xs font-mono mb-4 text-center">{validationError}</p>}
           {checkoutError && (
             <div className="flex flex-col items-center mb-4">
-              {checkoutError === 'RATE_LIMIT_EXCEEDED' && (
+              {checkoutError === 'RATE_LIMIT_EXCEEDED' ? (
                 <div className="bg-red-500/10 border border-red-500 text-red-500 p-3 rounded-lg text-center w-full mb-2">
                   <p className="text-[10px] font-mono font-bold uppercase tracking-[0.2em]">[NETWORK REJECTED] RATE LIMIT EXCEEDED. PLEASE WAIT 60 SECONDS.</p>
+                </div>
+              ) : (
+                <div className="bg-red-500/10 border border-red-500 text-red-500 p-3 rounded-lg text-center w-full mb-2">
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-[0.2em]">[SYSTEM FAULT] {checkoutError}</p>
                 </div>
               )}
               <button
