@@ -104,6 +104,8 @@ export const useScraperStore = create((set, get) => ({
       const errorMessage = err.message || 'PROTOCOL_ABORTED';
       if (errorMessage.includes("429") || errorMessage.includes("Too Many Requests")) {
         set({ checkoutError: 'RATE_LIMIT_EXCEEDED' });
+      } else {
+        set({ checkoutError: errorMessage });
       }
       logError("CHECKOUT_FAILURE", {
         message: errorMessage,

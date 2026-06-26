@@ -219,41 +219,12 @@ export default {
       } catch (error) {
         const errorHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
 
-        if (error.message === "UPSTREAM_TIMEOUT") {
-          ctx.waitUntil(
-            (async () => {
-              try {
-                const payload = {
-                  telemetry_envelope: {
-                    project_id: "AXIM_B2B_SCRAPER",
-                    environment: "production",
-                    timestamp: new Date().toISOString()
-                  },
-                  event_payload: {
-                    event_type: "UPSTREAM_TIMEOUT_CRITICAL",
-                    severity: "CRITICAL",
-                    error_message: "External scraper exceeded edge execution limits",
-                    stack_trace: error.stack || "",
-                    metadata: {
-                      route: '/api/fulfill',
-                      execution_timestamp: new Date().toISOString()
-                    }
-                  }
-                };
-                await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(payload)
-                });
-              } catch (telemetryError) {
-                console.error("Critical telemetry dispatch failed", telemetryError);
-              }
-            })()
-          );
+        logForegroundTelemetry(ctx, error, '/api/fulfill');
+
+        if (error.message && error.message.toLowerCase().includes("timeout")) {
           return new Response(JSON.stringify({ error: "Gateway Timeout: Upstream extraction exceeded time limits." }), { status: 504, headers: errorHeaders });
         }
 
-        logForegroundTelemetry(ctx, error, '/api/fulfill');
         return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: errorHeaders });
       }
     }
@@ -493,6 +464,8 @@ async function logExecutionToLedger(aximKey, sessionId, filters) {
 
 
 function logForegroundTelemetry(ctx, error, routePath) {
+  const isTimeout = error.message && error.message.toLowerCase().includes("timeout");
+
   ctx.waitUntil(
     (async () => {
       try {
@@ -503,13 +476,16 @@ function logForegroundTelemetry(ctx, error, routePath) {
             timestamp: new Date().toISOString()
           },
           event_payload: {
-            event_type: "ROUTE_EXECUTION_FAILURE",
-            severity: "HIGH",
-            error_message: error.message || String(error),
+            event_type: isTimeout ? "UPSTREAM_TIMEOUT_CRITICAL" : "ROUTE_EXECUTION_FAILURE",
+            severity: isTimeout ? "CRITICAL" : "HIGH",
+            error_message: isTimeout
+              ? "External scraper exceeded edge execution limits (Apify is lagging, not our code)"
+              : (error.message || String(error)),
             stack_trace: error.stack || "",
             metadata: {
               route: routePath,
-              execution_timestamp: new Date().toISOString()
+              execution_timestamp: new Date().toISOString(),
+              target_swarm: isTimeout ? "Onyx Swarm" : undefined
             }
           }
         };
