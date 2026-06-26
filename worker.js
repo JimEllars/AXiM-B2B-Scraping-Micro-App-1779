@@ -226,6 +226,40 @@ export default {
         );
         const scrapedLeads = await Promise.race([extractionPromise, timeoutPromise]);
 
+        if (scrapedLeads.length === 0) {
+            // Autonomous Refund Orchestration
+            ctx.waitUntil(
+                fetch('https://api.stripe.com/v1/refunds', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${env.STRIPE_SECRET_KEY}`,
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams({
+                        payment_intent: session.payment_intent
+                    })
+                }).catch(err => console.error("Failed to initiate Stripe refund", err))
+            );
+
+            const refundEmailHtml = `<h1>Extraction Failed</h1><p>No records were found for your specific parameters. A full refund of $29.00 has been initiated.</p>`;
+            ctx.waitUntil(
+                fetch('https://api.emailit.com/v1/send', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${env.EMAILIT_API_KEY}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to: [{ email: userEmail }],
+                        subject: `Refund Initiated: No leads found for ${filters.industry} / ${filters.location}`,
+                        html: refundEmailHtml
+                    })
+                }).catch(err => console.error("Failed to send refund notification email", err))
+            );
+
+            return new Response(JSON.stringify({ status: "empty_refunded", count: 0 }), {
+                status: 200,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
+
         // --- MEMORY HARDENING ---
         const safeLeads = scrapedLeads.slice(0, 5000);
         let warningLog = undefined;
@@ -395,7 +429,7 @@ async function executeScrape(apiKey, filters) {
     const data = await response.json();
 
     if (!Array.isArray(data) || data.length === 0) {
-      throw new Error("Scraper returned no leads");
+      return [];
     }
 
     return data;
