@@ -244,7 +244,8 @@ export default {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${env.STRIPE_SECRET_KEY}`,
-                        'Content-Type': 'application/x-www-form-urlencoded'
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Idempotency-Key': crypto.randomUUID()
                     },
                     body: new URLSearchParams({
                         payment_intent: session.payment_intent
@@ -254,15 +255,45 @@ export default {
 
             const refundEmailHtml = `<h1>Extraction Failed</h1><p>No records were found for your specific parameters. A full refund of $29.00 has been initiated.</p>`;
             ctx.waitUntil(
-                fetch('https://api.emailit.com/v1/send', {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${env.EMAILIT_API_KEY}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        to: [{ email: userEmail }],
-                        subject: `Refund Initiated: No leads found for ${filters.industry} / ${filters.location}`,
-                        html: refundEmailHtml
-                    })
-                }).catch(err => console.error("Failed to send refund notification email", err))
+                (async () => {
+                try {
+                    const response = await fetch('https://api.emailit.com/v1/send', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${env.EMAILIT_API_KEY}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            to: [{ email: userEmail }],
+                            subject: `Refund Initiated: No leads found for ${filters.industry} / ${filters.location}`,
+                            html: refundEmailHtml
+                        })
+                    });
+                    if (!response.ok) {
+                        throw new Error(`Email API returned ${response.status}`);
+                    }
+                } catch (err) {
+                    try {
+                        const payload = {
+                            telemetry_envelope: {
+                                project_id: "AXIM_B2B_SCRAPER",
+                                environment: "production",
+                                timestamp: new Date().toISOString()
+                            },
+                            event_payload: {
+                                event_type: "[NON_CRITICAL_FAULT] EMAIL RECEIPT FAILED",
+                                severity: "LOW",
+                                error_message: maskEmailInString(err.message || String(err)),
+                                metadata: { target_swarm: "Onyx Swarm" }
+                            }
+                        };
+                        await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                    } catch (telemetryErr) {
+                        console.error("Telemetry failure", telemetryErr);
+                    }
+                }
+            })()
             );
 
             return new Response(JSON.stringify({ status: "empty_refunded", count: 0 }), {
