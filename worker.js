@@ -75,30 +75,31 @@ export default {
     }
 
 
-    const corsHeaders = {
-      'Access-Control-Allow-Origin': env.FRONTEND_URL,
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key',
-    };
 
-    if (request.method === 'OPTIONS') {
-      if (!env.FRONTEND_URL) {
-         return new Response(JSON.stringify({ error: "Configuration Error: Missing Frontend Origin" }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-      return new Response(null, { status: 204, headers: corsHeaders });
-    }
-
+    const origin = request.headers.get('Origin');
+    const allowedOrigin = env.FRONTEND_URL || 'http://localhost:5173';
     const url = new URL(request.url);
 
     if (url.pathname.startsWith('/api/')) {
-      if (!env.FRONTEND_URL) {
-        return new Response(JSON.stringify({ error: "Configuration Error: Missing Frontend Origin" }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      if (origin !== allowedOrigin) {
+        return new Response(JSON.stringify({ error: "Forbidden: Invalid Origin" }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' }
+        });
       }
-      const origin = request.headers.get('Origin');
-      if (origin !== env.FRONTEND_URL) {
-        return new Response(JSON.stringify({ error: "Forbidden: Invalid Origin" }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
+    }
 
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': allowedOrigin,
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, stripe-signature',
+    };
+
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: corsHeaders });
+    }
+
+    if (url.pathname.startsWith('/api/')) {
       const missingKeys = [];
       if (!env.STRIPE_SECRET_KEY) missingKeys.push('STRIPE_SECRET_KEY');
       if (!env.SCRAPING_API_KEY) missingKeys.push('SCRAPING_API_KEY');
@@ -176,6 +177,41 @@ export default {
     // 2. LEAD SCRAPING & DECENTRALIZED FULFILLMENT
     if (url.pathname === '/api/fulfill' && request.method === 'POST') {
       try {
+        const stripeSignature = request.headers.get('stripe-signature');
+        if (stripeSignature) {
+          const timestampMatch = stripeSignature.match(/t=(\d+)/);
+          if (timestampMatch) {
+            const signatureTimestamp = parseInt(timestampMatch[1], 10);
+            const timeDifference = (Date.now() / 1000) - signatureTimestamp;
+            if (timeDifference > 300) {
+              const payload = {
+                telemetry_envelope: {
+                  project_id: "AXIM_B2B_SCRAPER",
+                  environment: "production",
+                  timestamp: new Date().toISOString()
+                },
+                event_payload: {
+                  event_type: "SECURITY_ALERT",
+                  severity: "CRITICAL",
+                  error_message: "[SECURITY_ALERT] WEBHOOK REPLAY ATTACK BLOCKED",
+                  stack_trace: "",
+                  metadata: { route: '/api/fulfill', target_swarm: "Onyx Swarm" }
+                }
+              };
+              ctx.waitUntil(
+                fetch('https://api.axim.us.com/v1/telemetry/ingest', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload)
+                }).catch(() => {})
+              );
+              return new Response(JSON.stringify({ error: "Bad Request: Webhook signature expired" }), {
+                status: 400,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+              });
+            }
+          }
+        }
 
         const { session_id } = await request.json();
         
