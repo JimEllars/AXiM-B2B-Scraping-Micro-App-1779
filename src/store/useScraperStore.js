@@ -176,7 +176,7 @@ export const useScraperStore = create((set, get) => ({
         const data = await res.json();
 
         if (data.status === 'empty_refunded') {
-          addLog("[SYSTEM] 0 MATCHING NODES. REFUND INITIATED.");
+          addLog("[REFUND_ISSUED] 0 MATCHING RECORDS FOUND. PAYMENT REVERSED.");
           set({ fulfillmentStatus: 'refunded' });
           return;
         } else if (data.status === 'already_fulfilled') {
@@ -247,7 +247,7 @@ export const useScraperStore = create((set, get) => ({
       }
 
       if (data.status === 'empty_refunded') {
-        addLog("[SYSTEM] 0 MATCHING NODES. REFUND INITIATED.");
+        addLog("[REFUND_ISSUED] 0 MATCHING RECORDS FOUND. PAYMENT REVERSED.");
         set({ fulfillmentStatus: 'refunded' });
         return;
       } else if (data.status === 'already_fulfilled') {
