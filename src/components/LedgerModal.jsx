@@ -97,7 +97,7 @@ export default function LedgerModal({ isOpen, onClose }) {
                   <div key={order.id} className="bg-white/[0.02] border border-white/5 p-4 rounded-xl flex items-center justify-between group hover:border-axim-teal/20 transition-all">
                     <div className="flex gap-4">
                       <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
-                        <SafeIcon icon={order.status === 'COMPLETED' ? FiCheckCircle : FiClock} className={order.status === 'COMPLETED' ? 'text-axim-teal' : 'text-axim-gold'} />
+                        <SafeIcon icon={order.status === 'COMPLETED' ? FiCheckCircle : FiClock} className={order.status === 'COMPLETED' ? 'text-axim-teal' : (order.status === 'REFUNDED' || order.status === 'empty_refunded') ? 'text-yellow-400' : 'text-axim-gold'} />
                       </div>
                       <div>
                         <div className="flex items-center gap-2 mb-1">
@@ -114,7 +114,7 @@ export default function LedgerModal({ isOpen, onClose }) {
                     </div>
                     <div className="text-right">
                       <div className={`text-[8px] font-black px-2 py-0.5 rounded border mb-1 inline-block ${
-                        order.status === 'COMPLETED' ? 'text-axim-teal border-axim-teal/20 bg-axim-teal/5' : 'text-axim-gold border-axim-gold/20 bg-axim-gold/5'
+                        order.status === 'COMPLETED' ? 'text-axim-teal border-axim-teal/20 bg-axim-teal/5' : (order.status === 'REFUNDED' || order.status === 'empty_refunded') ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30' : 'text-axim-gold border-axim-gold/20 bg-axim-gold/5'
                       }`}>
                         {order.status}
                       </div>
