@@ -175,7 +175,11 @@ export const useScraperStore = create((set, get) => ({
         }
         const data = await res.json();
 
-        if (data.status === 'already_fulfilled') {
+        if (data.status === 'empty_refunded') {
+          addLog("[SYSTEM] 0 MATCHING NODES. REFUND INITIATED.");
+          set({ fulfillmentStatus: 'refunded' });
+          return;
+        } else if (data.status === 'already_fulfilled') {
           addLog("[SYSTEM] LEDGER RECONCILED. DISPATCH ALREADY COMPLETED.");
           set({ fulfillmentStatus: 'completed' });
           return;
@@ -242,7 +246,11 @@ export const useScraperStore = create((set, get) => ({
         throw fetchError;
       }
 
-      if (data.status === 'already_fulfilled') {
+      if (data.status === 'empty_refunded') {
+        addLog("[SYSTEM] 0 MATCHING NODES. REFUND INITIATED.");
+        set({ fulfillmentStatus: 'refunded' });
+        return;
+      } else if (data.status === 'already_fulfilled') {
         addLog("[SYSTEM] LEDGER RECONCILED. DISPATCH ALREADY COMPLETED.");
       } else if (data.dropped !== undefined) {
         addLog(`[SYSTEM] Data scrub complete. ${data.dropped} corrupted records purged. ${data.count} clean records packed for delivery.`);
