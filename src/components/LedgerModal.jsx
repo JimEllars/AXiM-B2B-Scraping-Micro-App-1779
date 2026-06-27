@@ -94,54 +94,76 @@ export default function LedgerModal({ isOpen, onClose }) {
               </div>
             </div>
 
-            <div className="max-h-[60vh] overflow-y-auto p-4 space-y-3">
-              {loading ? (
-                <div className="py-20 text-center flex justify-center items-center">
-                  <div className="animate-pulse font-mono tracking-widest text-[10px] text-gray-600">
-                    Retrieving Encrypted Records...
-                  </div>
-                </div>
-              ) : ledgerError ? (
-                <div className="py-20 text-center font-mono text-[10px] text-red-500 uppercase tracking-widest">
-                  [UPSTREAM LEDGER UNAVAILABLE. THE ONYX SWARM IS INVESTIGATING. PLEASE TRY AGAIN LATER.]
-                </div>
-              ) : filteredOrders.length === 0 ? (
-                <div className="py-20 text-center text-[10px] font-mono text-gray-600 uppercase tracking-widest">
-                  No records found in current segment.
-                </div>
-              ) : (
-                filteredOrders.map((order) => (
-                  <div key={order.id} className="bg-white/[0.02] border border-white/5 p-4 rounded-xl flex items-center justify-between group hover:border-axim-teal/20 transition-all">
-                    <div className="flex gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
-                        <SafeIcon icon={order.status === 'COMPLETED' ? FiCheckCircle : FiClock} className={order.status === 'COMPLETED' ? 'text-axim-teal' : (order.status === 'REFUNDED' || order.status === 'empty_refunded') ? 'text-yellow-400' : 'text-axim-gold'} />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[10px] font-black text-white uppercase">{order.industry}</span>
-                          <span className="text-[8px] text-gray-600">•</span>
-                          <span className="flex items-center gap-1 text-[8px] font-mono text-gray-500">
-                            <SafeIcon icon={FiMapPin} className="text-[8px]" /> {order.location}
-                          </span>
-                        </div>
-                        <p className="text-[8px] font-mono text-gray-600 uppercase tracking-widest">
-                          ID: {order.id.split('-')[0]}... [SECURED]
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className={`text-[8px] font-black px-2 py-0.5 rounded border mb-1 inline-block ${
-                        order.status === 'COMPLETED' ? 'text-axim-teal border-axim-teal/20 bg-axim-teal/5' : (order.status === 'REFUNDED' || order.status === 'empty_refunded') ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30' : 'text-axim-gold border-axim-gold/20 bg-axim-gold/5'
-                      }`}>
-                        {order.status}
-                      </div>
-                      <p className="text-[7px] font-mono text-gray-700 uppercase">
-                        {new Date(order.timestamp).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              )}
+
+            <div className="max-h-[60vh] overflow-y-auto p-4">
+              <div className="overflow-x-auto scrollbar-hide">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-white/5">
+                      <th className="py-2 px-4 text-[10px] font-black text-gray-500 uppercase tracking-widest max-w-[120px] sm:max-w-[200px] truncate overflow-hidden whitespace-nowrap">Status</th>
+                      <th className="py-2 px-4 text-[10px] font-black text-gray-500 uppercase tracking-widest max-w-[120px] sm:max-w-[200px] truncate overflow-hidden whitespace-nowrap">Industry</th>
+                      <th className="py-2 px-4 text-[10px] font-black text-gray-500 uppercase tracking-widest max-w-[120px] sm:max-w-[200px] truncate overflow-hidden whitespace-nowrap">Location</th>
+                      <th className="py-2 px-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">ID</th>
+                      <th className="py-2 px-4 text-[10px] font-black text-gray-500 uppercase tracking-widest text-right">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <tr>
+                        <td colSpan="5" className="py-20 text-center">
+                          <div className="animate-pulse font-mono tracking-widest text-[10px] text-gray-600">
+                            Retrieving Encrypted Records...
+                          </div>
+                        </td>
+                      </tr>
+                    ) : ledgerError ? (
+                      <tr>
+                        <td colSpan="5" className="py-20 text-center font-mono text-[10px] text-red-500 uppercase tracking-widest">
+                          [UPSTREAM LEDGER UNAVAILABLE. THE ONYX SWARM IS INVESTIGATING. PLEASE TRY AGAIN LATER.]
+                        </td>
+                      </tr>
+                    ) : filteredOrders.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" className="py-20 text-center text-[10px] font-mono text-gray-600 uppercase tracking-widest">
+                          No records found in current segment.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredOrders.map((order) => (
+                        <tr key={order.id} className="bg-white/[0.02] border-b border-white/5 group hover:border-axim-teal/20 transition-all">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
+                                <SafeIcon icon={order.status === 'COMPLETED' ? FiCheckCircle : FiClock} className={order.status === 'COMPLETED' ? 'text-axim-teal' : (order.status === 'REFUNDED' || order.status === 'empty_refunded') ? 'text-yellow-400' : 'text-axim-gold'} />
+                              </div>
+                              <div className={`text-[8px] font-black px-2 py-0.5 rounded border inline-block ${
+                                order.status === 'COMPLETED' ? 'text-axim-teal border-axim-teal/20 bg-axim-teal/5' : (order.status === 'REFUNDED' || order.status === 'empty_refunded') ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30' : 'text-axim-gold border-axim-gold/20 bg-axim-gold/5'
+                              }`}>
+                                {order.status}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-[10px] font-black text-white uppercase max-w-[120px] sm:max-w-[200px] truncate overflow-hidden whitespace-nowrap">
+                            {order.industry}
+                          </td>
+                          <td className="py-3 px-4 text-[10px] font-mono text-gray-500 max-w-[120px] sm:max-w-[200px] truncate overflow-hidden whitespace-nowrap">
+                            <div className="flex items-center gap-1">
+                              <SafeIcon icon={FiMapPin} className="text-[8px] shrink-0" />
+                              <span className="truncate">{order.location}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-[8px] font-mono text-gray-600 uppercase tracking-widest">
+                            {order.id.split('-')[0]}... [SECURED]
+                          </td>
+                          <td className="py-3 px-4 text-right text-[7px] font-mono text-gray-700 uppercase">
+                            {new Date(order.timestamp).toLocaleDateString()}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </motion.div>
         </div>
