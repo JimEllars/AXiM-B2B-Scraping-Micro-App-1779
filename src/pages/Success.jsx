@@ -9,9 +9,23 @@ import { Feedback } from '@questlabs/react-sdk';
 export default function Success() {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('session_id');
-  const { fulfillmentStatus, triggerFulfillment, filters } = useScraperStore();
 
   const extractionTriggered = useRef(false);
+
+  const analyticsTriggered = useRef(false);
+  const { fulfillmentStatus, triggerFulfillment, filters, estimatedLeads, currentOrderId } = useScraperStore();
+
+  useEffect(() => {
+    if (fulfillmentStatus === 'completed' && !analyticsTriggered.current) {
+      analyticsTriggered.current = true;
+      if (typeof window !== 'undefined' && window.aximTag) {
+        window.aximTag('event', 'EXTRACTION_COMPLETED', {
+          cohort_size: estimatedLeads || 0
+        });
+      }
+    }
+  }, [fulfillmentStatus, estimatedLeads]);
+
 
   useEffect(() => {
     if (sessionId && !extractionTriggered.current) {
