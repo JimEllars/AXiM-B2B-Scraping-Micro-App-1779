@@ -15,6 +15,20 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     logError('REACT_TREE_CRASH', { message: error.message, stack: errorInfo.componentStack });
+    try {
+      fetch('https://api.axim.us.com/v1/telemetry/ingest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_type: "CLIENT_REACT_CRASH",
+          metadata: { error: error.toString(), info: errorInfo.componentStack }
+        })
+      }).catch(e => {
+        // Silently catch fetch errors (e.g., blocked by ad-blocker)
+      });
+    } catch (e) {
+      // Silently catch synchronous errors
+    }
   }
 
   render() {
