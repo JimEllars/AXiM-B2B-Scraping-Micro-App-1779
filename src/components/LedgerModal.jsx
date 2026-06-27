@@ -8,12 +8,19 @@ export default function LedgerModal({ isOpen, onClose }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [ledgerError, setLedgerError] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setLoading(true);
+      setLedgerError(false);
       orderService.getRecentOrders(20).then(data => {
+        if (!data || !Array.isArray(data)) throw new Error("Invalid ledger data");
         setOrders(data);
+        setLoading(false);
+      }).catch(err => {
+        console.error(err);
+        setLedgerError(true);
         setLoading(false);
       });
     }
@@ -21,10 +28,16 @@ export default function LedgerModal({ isOpen, onClose }) {
 
   const handleRefresh = () => {
     setLoading(true);
+    setLedgerError(false);
     orderService.getRecentOrders(20).then(data => {
-      setOrders(data);
-      setLoading(false);
-    });
+        if (!data || !Array.isArray(data)) throw new Error("Invalid ledger data");
+        setOrders(data);
+        setLoading(false);
+      }).catch(err => {
+        console.error(err);
+        setLedgerError(true);
+        setLoading(false);
+      });
   };
 
   const filteredOrders = orders.filter((order) => {
@@ -87,6 +100,10 @@ export default function LedgerModal({ isOpen, onClose }) {
                   <div className="animate-pulse font-mono tracking-widest text-[10px] text-gray-600">
                     Retrieving Encrypted Records...
                   </div>
+                </div>
+              ) : ledgerError ? (
+                <div className="py-20 text-center font-mono text-[10px] text-red-500 uppercase tracking-widest">
+                  [UPSTREAM LEDGER UNAVAILABLE. THE ONYX SWARM IS INVESTIGATING. PLEASE TRY AGAIN LATER.]
                 </div>
               ) : filteredOrders.length === 0 ? (
                 <div className="py-20 text-center text-[10px] font-mono text-gray-600 uppercase tracking-widest">
