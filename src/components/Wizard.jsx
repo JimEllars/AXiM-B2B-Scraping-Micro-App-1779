@@ -12,12 +12,12 @@ export default function Wizard() {
     setValidationError('');
 
     if (!filters.industry.trim() || filters.industry.trim().length < 3) {
-      setValidationError('Industry must be at least 3 characters.');
+      setValidationError('Target Parameters must contain at least 3 characters.');
       return;
     }
 
     if (!filters.location.trim() || filters.location.trim().length < 3) {
-      setValidationError('Location must be at least 3 characters.');
+      setValidationError('Target Parameters must contain at least 3 characters.');
       return;
     }
 
@@ -177,7 +177,7 @@ export default function Wizard() {
           )}
           <button 
             onClick={handleCheckout}
-            disabled={isProcessing || filters.industry.trim().length < 3 || filters.location.trim().length < 3}
+            disabled={isProcessing}
             className="w-full bg-axim-teal text-black font-black uppercase tracking-[0.3em] py-6 rounded-2xl hover:bg-white transition-all duration-500 disabled:opacity-20 flex items-center justify-center gap-4 group shadow-[0_10px_40px_rgba(0,229,255,0.15)] relative overflow-hidden"
           >
             <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-500"></div>

@@ -39,7 +39,7 @@ export default function Success() {
   return (
     <div className="w-full max-w-2xl flex flex-col items-center py-12 px-4">
       <div className={`w-full bg-[#0a0a0a] border border-white/10 p-10 rounded-3xl relative overflow-hidden flex flex-col items-center mb-8 ${fulfillmentStatus === 'refunded' ? 'shadow-[0_0_50px_rgba(255,234,0,0.05)]' : 'shadow-[0_0_50px_rgba(0,229,255,0.05)]'}`}>
-        <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent to-transparent opacity-30 ${fulfillmentStatus === 'refunded' ? 'via-yellow-400' : 'via-axim-teal'}`}></div>
+        <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent to-transparent opacity-30 ${fulfillmentStatus === 'refunded' ? 'via-axim-gold' : 'via-axim-teal'}`}></div>
         
         {(fulfillmentStatus === 'verifying' || fulfillmentStatus === 'scraping') && (
           <div className="flex flex-col items-center gap-4 w-full py-8">
@@ -120,18 +120,18 @@ export default function Success() {
 
         {fulfillmentStatus === 'refunded' && (
           <div className="flex flex-col items-center gap-6 text-center w-full py-4">
-            <div className="w-20 h-20 bg-yellow-400/10 rounded-full flex items-center justify-center border border-yellow-400/20 relative">
-              <SafeIcon icon={FiAlertOctagon} className="text-yellow-400 text-4xl" />
-              <div className="absolute inset-0 bg-yellow-400/5 animate-ping rounded-full"></div>
+            <div className="w-20 h-20 bg-axim-gold/10 rounded-full flex items-center justify-center border border-axim-gold/20 relative">
+              <SafeIcon icon={FiAlertOctagon} className="text-axim-gold text-4xl" />
+              <div className="absolute inset-0 bg-axim-gold/5 animate-ping rounded-full"></div>
             </div>
             <div>
-              <h2 className="text-3xl font-black mb-2 uppercase italic text-yellow-400">EXTRACTION FAILED</h2>
+              <h2 className="text-3xl font-black mb-2 uppercase italic text-axim-gold">EXTRACTION FAILED</h2>
               <p className="text-gray-400 text-sm max-w-xs mx-auto mb-6">
                 [EXTRACTION FAILED: 0 MATCHING NODES. FULL REFUND INITIATED TO ORIGINAL PAYMENT METHOD.]
               </p>
 
-              <div className="bg-[#141414] border border-yellow-400/50 shadow-[0_0_20px_rgba(255,234,0,0.15)] p-4 rounded-xl mb-6 text-left w-full max-w-md mx-auto">
-                <h3 className="text-yellow-400 text-[10px] font-black uppercase tracking-widest mb-3">Edge Receipt Manifest</h3>
+              <div className="bg-[#141414] border border-axim-gold/50 shadow-[0_0_20px_rgba(255,234,0,0.15)] p-4 rounded-xl mb-6 text-left w-full max-w-md mx-auto">
+                <h3 className="text-axim-gold text-[10px] font-black uppercase tracking-widest mb-3">Edge Receipt Manifest</h3>
                 <div className="grid grid-cols-2 gap-2 text-xs font-mono text-gray-300">
                   <div className="text-gray-500">Industry:</div>
                   <div className="text-white">{filters?.industry || 'N/A'}</div>
@@ -175,9 +175,9 @@ export default function Success() {
             </div>
           )}
           {fulfillmentStatus === 'refunded' && (
-            <div className="flex items-center gap-2 bg-yellow-400/5 px-3 py-1.5 rounded border border-yellow-400/10">
-              <SafeIcon icon={FiAlertOctagon} className="text-yellow-400 text-xs" />
-              <span className="font-mono text-[9px] text-yellow-400 uppercase tracking-widest">REFUNDED</span>
+            <div className="flex items-center gap-2 bg-axim-gold/5 px-3 py-1.5 rounded border border-axim-gold/10">
+              <SafeIcon icon={FiAlertOctagon} className="text-axim-gold text-xs" />
+              <span className="font-mono text-[9px] text-axim-gold uppercase tracking-widest">REFUNDED</span>
             </div>
           )}
         </div>

@@ -226,7 +226,18 @@ export default {
         );
         const scrapedLeads = await Promise.race([extractionPromise, timeoutPromise]);
 
-        if (scrapedLeads.length === 0) {
+
+
+        // --- MEMORY HARDENING ---
+        const safeLeads = scrapedLeads.slice(0, 5000);
+        let warningLog = undefined;
+        if (scrapedLeads.length > 5000) {
+            warningLog = "Cohort was truncated to preserve edge memory quotas.";
+        }
+
+        // Data Sanitization Pipeline
+        const { cleanLeads, droppedCount } = sanitizeLeads(safeLeads);
+        if (cleanLeads.length === 0) {
             // Autonomous Refund Orchestration
             ctx.waitUntil(
                 fetch('https://api.stripe.com/v1/refunds', {
@@ -259,16 +270,6 @@ export default {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             });
         }
-
-        // --- MEMORY HARDENING ---
-        const safeLeads = scrapedLeads.slice(0, 5000);
-        let warningLog = undefined;
-        if (scrapedLeads.length > 5000) {
-            warningLog = "Cohort was truncated to preserve edge memory quotas.";
-        }
-
-        // Data Sanitization Pipeline
-        const { cleanLeads, droppedCount } = sanitizeLeads(safeLeads);
         const csvData = convertToCSV(cleanLeads);
 
         // ASYNC TASK A: Send Email to Customer via EmailIt (Decentralized)
