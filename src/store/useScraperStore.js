@@ -66,6 +66,11 @@ export const useScraperStore = create((set, get) => ({
     addLog("INITIATING_SECURE_CHECKOUT_PROTOCOL");
     
     try {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        throw new Error("INVALID_EMAIL_FORMAT");
+      }
+
       // 1. Record the order in Google Sheets
       const orderId = await orderService.createOrder({
         email,
@@ -105,6 +110,11 @@ export const useScraperStore = create((set, get) => ({
       const errorMessage = err.message || 'PROTOCOL_ABORTED';
       if (errorMessage.includes("429") || errorMessage.includes("Too Many Requests")) {
         set({ checkoutError: 'RATE_LIMIT_EXCEEDED' });
+        setTimeout(() => {
+          if (get().checkoutError === 'RATE_LIMIT_EXCEEDED') {
+            set({ checkoutError: null });
+          }
+        }, 60000);
       } else {
         set({ checkoutError: errorMessage });
       }
