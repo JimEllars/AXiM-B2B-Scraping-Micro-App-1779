@@ -141,8 +141,12 @@ export default {
     // 1. STRIPE CHECKOUT ORCHESTRATION
     if (url.pathname === '/api/checkout' && request.method === 'POST') {
       try {
-        const { filters, email } = await request.json();
-        
+        const reqBody = await request.json();
+        if (!reqBody || typeof reqBody.email !== 'string' || typeof reqBody.filters !== 'object') {
+          return new Response(JSON.stringify({ error: "MALFORMED_PAYLOAD" }), { status: 400, headers: corsHeaders });
+        }
+        const { filters, email } = reqBody;
+
         // Idempotency: Hashed combination of email and a basic timestamp for double-click prevention
         const timestampWindow = Math.floor(Date.now() / 60000); // 1-minute window
         const idempotencyKey = request.headers.get('Idempotency-Key') || btoa(`${email}:${timestampWindow}`).slice(0, 32);
