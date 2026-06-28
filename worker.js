@@ -259,11 +259,74 @@ export default {
         const userEmail = session.metadata.email;
 
         // Execute Scraping Logic (Mocked external API call)
-        const extractionPromise = executeScrape(env.SCRAPING_API_KEY, filters);
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("UPSTREAM_TIMEOUT")), 25000)
-        );
-        const scrapedLeads = await Promise.race([extractionPromise, timeoutPromise]);
+        let scrapedLeads = [];
+        try {
+          const extractionPromise = executeScrape(env.SCRAPING_API_KEY, filters);
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("UPSTREAM_TIMEOUT")), 25000)
+          );
+          scrapedLeads = await Promise.race([extractionPromise, timeoutPromise]);
+        } catch (scrapeError) {
+          // Upstream API Fail-Safe Refunds
+          ctx.waitUntil(
+              fetch('https://api.stripe.com/v1/refunds', {
+                  method: 'POST',
+                  headers: {
+                      'Authorization': `Bearer ${env.STRIPE_SECRET_KEY}`,
+                      'Content-Type': 'application/x-www-form-urlencoded',
+                      'Idempotency-Key': crypto.randomUUID()
+                  },
+                  body: new URLSearchParams({
+                      payment_intent: session.payment_intent
+                  })
+              }).catch(err => console.error("Failed to initiate Stripe refund", err))
+          );
+
+          const refundEmailHtml = `<h1>Extraction Failed</h1><p>An upstream network fault prevented your extraction. A full refund of $29.00 has been initiated.</p>`;
+          ctx.waitUntil(
+              (async () => {
+              try {
+                  const response = await fetch('https://api.emailit.com/v1/send', {
+                      method: 'POST',
+                      headers: { 'Authorization': `Bearer ${env.EMAILIT_API_KEY}`, 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                          to: [{ email: userEmail }],
+                          subject: `Refund Initiated: Network Fault`,
+                          html: refundEmailHtml
+                      })
+                  });
+                  if (!response.ok) {
+                      throw new Error(`Email API returned ${response.status}`);
+                  }
+              } catch (err) {
+                  try {
+                      const payload = {
+                          telemetry_envelope: {
+                              project_id: "AXIM_B2B_SCRAPER",
+                              environment: "production",
+                              timestamp: new Date().toISOString()
+                          },
+                          event_payload: {
+                              event_type: "[NON_CRITICAL_FAULT] EMAIL RECEIPT FAILED",
+                              severity: "LOW",
+                              error_message: maskEmailInString(err.message || String(err)),
+                              metadata: { target_swarm: "Onyx Swarm" }
+                          }
+                      };
+                      await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(payload)
+                      });
+                  } catch (telemetryErr) {
+                      console.error("Telemetry failure", telemetryErr);
+                  }
+              }
+          })()
+          );
+
+          throw scrapeError;
+        }
 
 
 

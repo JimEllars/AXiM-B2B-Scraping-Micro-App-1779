@@ -6,8 +6,32 @@ import Success from './pages/Success';
 import SafeIcon from './common/SafeIcon';
 import { FiTerminal, FiLayout } from 'react-icons/fi';
 import '@questlabs/react-sdk/dist/style.css';
+import { useScraperStore } from './store/useScraperStore';
 
 function App() {
+  const isOnline = useScraperStore((state) => state.isOnline);
+
+  React.useEffect(() => {
+    if (isOnline === false) {
+      document.title = "[OFFLINE] AXiM B2B Scraper Terminal";
+    } else {
+      document.title = "AXiM B2B Scraper Terminal // Edge Acquisition Node";
+    }
+  }, [isOnline]);
+
+  React.useEffect(() => {
+    const handleOnline = () => useScraperStore.setState({ isOnline: true });
+    const handleOffline = () => useScraperStore.setState({ isOnline: false });
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   return (
     <Router>
       <div className="min-h-screen bg-void text-white font-sans flex flex-col relative selection:bg-axim-teal selection:text-black">

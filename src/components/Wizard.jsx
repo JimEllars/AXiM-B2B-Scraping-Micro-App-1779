@@ -78,7 +78,7 @@ export default function Wizard() {
               <input 
                 type="text" 
                 value={filters.industry}
-                onChange={(e) => updateFilter('industry', e.target.value.trimStart())}
+                onChange={(e) => updateFilter('industry', e.target.value.replace(/[<>]|[^a-zA-Z0-9\s.,&'-]/g, '').trimStart())}
                 onBlur={(e) => updateFilter('industry', e.target.value.trim())}
                 placeholder="e.g. Solar, Roofing, SaaS"
                 disabled={isProcessing}
@@ -94,7 +94,7 @@ export default function Wizard() {
             <input 
               type="text" 
               value={filters.location}
-              onChange={(e) => updateFilter('location', e.target.value.trimStart())}
+              onChange={(e) => updateFilter('location', e.target.value.replace(/[<>]|[^a-zA-Z0-9\s.,&'-]/g, '').trimStart())}
               onBlur={(e) => updateFilter('location', e.target.value.trim())}
               placeholder="City, State or Country"
               disabled={isProcessing}
