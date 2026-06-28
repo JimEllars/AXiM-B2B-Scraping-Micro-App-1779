@@ -5,7 +5,7 @@ import { FiDatabase, FiLock, FiMail, FiUsers, FiSearch, FiTarget, FiZap, FiRefre
 
 export default function Wizard() {
   if (typeof window !== 'undefined') window.useScraperStore = useScraperStore;
-  const { filters, email, updateFilter, initiateCheckout, isProcessing, estimatedLeads, resetFilters, checkoutError, hardResetSystem } = useScraperStore();
+  const { filters, email, updateFilter, updateEmail, initiateCheckout, isProcessing, estimatedLeads, resetFilters, checkoutError, hardResetSystem } = useScraperStore();
   const [validationError, setValidationError] = React.useState('');
 
   const handleCheckout = () => {
@@ -78,8 +78,8 @@ export default function Wizard() {
               <input 
                 type="text" 
                 value={filters.industry}
-                onChange={(e) => updateFilter('industry', e.target.value.replace(/[<>]|[^a-zA-Z0-9\s.,&'-]/g, '').trimStart())}
-                onBlur={(e) => updateFilter('industry', e.target.value.trim())}
+                onChange={(e) => { setValidationError(''); updateFilter('industry', e.target.value.replace(/[<>]|[^a-zA-Z0-9\s.,&'-]/g, '').trimStart()) }}
+                onBlur={(e) => { setValidationError(''); updateFilter('industry', e.target.value.trim()) }}
                 placeholder="e.g. Solar, Roofing, SaaS"
                 disabled={isProcessing}
                 className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-1 focus:ring-axim-teal/20 focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -94,8 +94,8 @@ export default function Wizard() {
             <input 
               type="text" 
               value={filters.location}
-              onChange={(e) => updateFilter('location', e.target.value.replace(/[<>]|[^a-zA-Z0-9\s.,&'-]/g, '').trimStart())}
-              onBlur={(e) => updateFilter('location', e.target.value.trim())}
+              onChange={(e) => { setValidationError(''); updateFilter('location', e.target.value.replace(/[<>]|[^a-zA-Z0-9\s.,&'-]/g, '').trimStart()) }}
+              onBlur={(e) => { setValidationError(''); updateFilter('location', e.target.value.trim()) }}
               placeholder="City, State or Country"
               disabled={isProcessing}
               className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-1 focus:ring-axim-teal/20 focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -110,7 +110,7 @@ export default function Wizard() {
             </label>
             <select 
               value={filters.size}
-              onChange={(e) => updateFilter('size', e.target.value)}
+              onChange={(e) => { setValidationError(''); updateFilter('size', e.target.value) }}
               disabled={isProcessing}
               className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:outline-none transition-all appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -128,7 +128,7 @@ export default function Wizard() {
             <input 
               type="text" 
               value={filters.keywords}
-              onChange={(e) => updateFilter('keywords', e.target.value.replace(/[<>]/g, ''))}
+              onChange={(e) => { setValidationError(''); updateFilter('keywords', e.target.value.replace(/[<>]/g, '')) }}
               placeholder="e.g. CEO, Marketing Director"
               disabled={isProcessing}
               className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -145,8 +145,8 @@ export default function Wizard() {
             <input 
               type="email" 
               value={email}
-              onChange={(e) => useScraperStore.setState({ email: e.target.value.trimStart() })}
-              onBlur={(e) => useScraperStore.setState({ email: e.target.value.trim() })}
+              onChange={(e) => { setValidationError(''); updateEmail(e.target.value.trimStart()) }}
+              onBlur={(e) => { setValidationError(''); updateEmail(e.target.value.trim()) }}
               placeholder="operator@company.com"
               disabled={isProcessing}
               className="w-full bg-black/50 border border-white/10 text-white py-4 pr-4 pl-12 rounded-xl font-mono text-sm focus:border-axim-teal focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
