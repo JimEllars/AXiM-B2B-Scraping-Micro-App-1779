@@ -40,15 +40,17 @@ export default function NetworkFeed() {
         <span className="text-[8px] font-black text-axim-teal uppercase tracking-widest">Live_Ledger</span>
       </div>
       <AnimatePresence mode="wait">
-        <motion.p
-          key={`${index}-${activities[index]}`}
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: -20, opacity: 0 }}
-          className="text-[9px] font-mono text-gray-500 uppercase tracking-wider truncate"
-        >
-          {activities[index]}
-        </motion.p>
+        <div className="flex-1 min-w-0 flex items-center">
+          <motion.p
+            key={`${index}-${activities[index]}`}
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -20, opacity: 0 }}
+            className="text-[9px] font-mono text-gray-500 uppercase tracking-wider max-w-full truncate block overflow-hidden whitespace-nowrap"
+          >
+            {activities[index]}
+          </motion.p>
+        </div>
       </AnimatePresence>
     </div>
   );

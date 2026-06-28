@@ -20,8 +20,8 @@ class ErrorBoundary extends React.Component {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          event_type: "CLIENT_REACT_CRASH",
-          metadata: { error: error.toString(), info: errorInfo.componentStack }
+          event_type: "CLIENT_INTERFACE_CRASH",
+          metadata: { error: error?.toString(), stack: errorInfo?.componentStack }
         })
       }).catch(e => {
         // Silently catch fetch errors (e.g., blocked by ad-blocker)
