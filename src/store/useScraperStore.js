@@ -18,6 +18,7 @@ export const useScraperStore = create((set, get) => ({
   logs: [],
   idempotencyKey: generateIdempotencyKey(),
   checkoutError: null,
+  isOnline: navigator.onLine,
   
   updateFilter: (key, value) => {
     set(state => {
