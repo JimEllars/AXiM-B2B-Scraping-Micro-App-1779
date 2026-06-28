@@ -128,7 +128,7 @@ export default function Wizard() {
             <input 
               type="text" 
               value={filters.keywords}
-              onChange={(e) => updateFilter('keywords', e.target.value)}
+              onChange={(e) => updateFilter('keywords', e.target.value.replace(/[<>]/g, ''))}
               placeholder="e.g. CEO, Marketing Director"
               disabled={isProcessing}
               className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"

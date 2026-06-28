@@ -17,9 +17,7 @@ function App() {
     } else {
       document.title = "AXiM B2B Scraper Terminal // Edge Acquisition Node";
     }
-  }, [isOnline]);
 
-  React.useEffect(() => {
     const handleOnline = () => useScraperStore.setState({ isOnline: true });
     const handleOffline = () => useScraperStore.setState({ isOnline: false });
 
@@ -30,7 +28,7 @@ function App() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [isOnline]);
 
   return (
     <Router>

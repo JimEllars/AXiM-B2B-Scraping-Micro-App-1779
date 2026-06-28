@@ -325,6 +325,8 @@ export default {
           })()
           );
 
+          ctx.waitUntil(safeExecuteWithTelemetry('upstreamFaultRefund', () => Promise.resolve(), env, { session_id, status: 'REFUNDED_DUE_TO_UPSTREAM_FAULT' }));
+
           throw scrapeError;
         }
 
