@@ -1,11 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import { useScraperStore } from '../store/useScraperStore';
+import { FiTrash2 } from 'react-icons/fi';
 
 export default function LogTerminal() {
   const logs = useScraperStore(state => state.logs);
   const scrollRef = useRef(null);
 
   const addLog = useScraperStore(state => state.addLog);
+  const clearLogs = useScraperStore(state => state.clearLogs);
 
   useEffect(() => {
     let timeout1, timeout2, timeout3;
@@ -36,7 +38,16 @@ export default function LogTerminal() {
   }, [logs]);
 
   return (
-    <div className="w-full bg-black border border-white/5 rounded-lg p-4 font-mono text-[10px] h-48 overflow-y-auto mt-6 scrollbar-hide scroll-smooth" ref={scrollRef}>
+    <div className="w-full relative mt-6">
+
+      <button
+        onClick={clearLogs}
+        className="absolute top-2 right-2 p-1 text-gray-600 hover:text-red-500 transition-colors z-10"
+        title="Clear Logs"
+      >
+        <FiTrash2 size={14} />
+      </button>
+      <div className="w-full bg-black border border-white/5 rounded-lg p-4 font-mono text-[10px] h-48 overflow-y-auto scrollbar-hide scroll-smooth" ref={scrollRef}>
       <div className="flex flex-col gap-1">
         {logs.map(log => (
                     <div key={log.id} className="flex gap-3">
@@ -52,6 +63,7 @@ export default function LogTerminal() {
           <span className="text-gray-800 animate-pulse italic">AWAITING_SEQUENCE...</span>
         )}
       </div>
+    </div>
     </div>
   );
 }

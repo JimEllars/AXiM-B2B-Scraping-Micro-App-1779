@@ -61,6 +61,8 @@ export const useScraperStore = create((set, get) => ({
     logs: [...state.logs, { id: Date.now(), timestamp: new Date().toLocaleTimeString(), message }]
   })),
 
+  clearLogs: () => set({ logs: [] }),
+
   initiateCheckout: async () => {
     set({ isProcessing: true, checkoutError: null });
     const { addLog, filters, email } = get();
@@ -101,6 +103,10 @@ export const useScraperStore = create((set, get) => ({
         throw new Error(`Checkout API failed with status ${res.status}`);
       }
       const data = await res.json();
+      const rayId = res.headers.get('X-AXiM-Ray-ID');
+      if (rayId) {
+        addLog(`[SYS_RAY_TRACE: ${rayId}]`);
+      }
       if (data.url) {
         set({ idempotencyKey: generateIdempotencyKey() });
         window.location.href = data.url;

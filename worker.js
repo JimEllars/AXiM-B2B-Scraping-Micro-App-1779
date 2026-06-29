@@ -63,6 +63,11 @@ export default {
       }
     }
     const clientIP = request.headers.get('cf-connecting-ip') || 'unknown';
+    const edgeContext = {
+      colo: request.cf?.colo || 'UNKNOWN',
+      country: request.cf?.country || 'UNKNOWN',
+      rayId: request.headers.get('cf-ray') || 'UNKNOWN'
+    };
     const rateLimitUrl = new URL(request.url);
 
     if (['/api/checkout', '/api/fulfill'].includes(rateLimitUrl.pathname) && request.method === 'POST') {
@@ -89,7 +94,9 @@ export default {
       }
     }
 
+    const rayIdHeader = request.headers.get('cf-ray') || 'UNKNOWN';
     const corsHeaders = {
+      'X-AXiM-Ray-ID': rayIdHeader,
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'DENY',
       'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
@@ -113,6 +120,7 @@ export default {
       if (missingKeys.length > 0) {
         const payload = {
           telemetry_envelope: {
+            metadata: edgeContext,
             project_id: "AXIM_B2B_SCRAPER",
             environment: "production",
             timestamp: new Date().toISOString()
@@ -122,7 +130,7 @@ export default {
             severity: "HIGH",
             error_message: `Missing runtime secrets: ${missingKeys.join(', ')}`,
             stack_trace: "",
-            metadata: { route: url.pathname }
+            metadata: { route: url.pathname, ...edgeContext }
           }
         };
 
@@ -176,7 +184,7 @@ export default {
         const session = await stripeResponse.json();
         return new Response(JSON.stringify(session), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       } catch (error) {
-        logForegroundTelemetry(ctx, error, '/api/checkout');
+        logForegroundTelemetry(ctx, error, '/api/checkout', edgeContext);
         const errorHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
         return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: errorHeaders });
       }
@@ -203,7 +211,7 @@ export default {
                   severity: "CRITICAL",
                   error_message: "[SECURITY_ALERT] WEBHOOK REPLAY ATTACK BLOCKED",
                   stack_trace: "",
-                  metadata: { route: '/api/fulfill', target_swarm: "Onyx Swarm" }
+                  metadata: { route: '/api/fulfill', target_swarm: "Onyx Swarm", ...edgeContext }
                 }
               };
               ctx.waitUntil(
@@ -223,10 +231,10 @@ export default {
 
         const { session_id } = await request.json();
         
-        const response = await executeFulfillmentPipeline(session_id, env, ctx, '/api/fulfill', corsHeaders);
+        const response = await executeFulfillmentPipeline(session_id, env, ctx, '/api/fulfill', corsHeaders, edgeContext);
         return response;
       } catch (error) {
-        logForegroundTelemetry(ctx, error, '/api/fulfill');
+        logForegroundTelemetry(ctx, error, '/api/fulfill', edgeContext);
         return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
@@ -311,7 +319,7 @@ export default {
             ctx.waitUntil(
                 (async () => {
                     try {
-                        await executeFulfillmentPipeline(session_id, env, ctx, '/api/webhook', corsHeaders);
+                        await executeFulfillmentPipeline(session_id, env, ctx, '/api/webhook', corsHeaders, edgeContext);
                     } catch (err) {
                         console.error("Webhook fulfillment failed", err);
                     }
@@ -322,7 +330,7 @@ export default {
         return new Response(JSON.stringify({ received: true }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
       } catch (error) {
-        logForegroundTelemetry(ctx, error, '/api/webhook');
+        logForegroundTelemetry(ctx, error, '/api/webhook', edgeContext);
         return new Response("Webhook Error", { status: 400 });
       }
     }
@@ -333,7 +341,7 @@ export default {
 
 
 
-async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsHeaders) {
+async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsHeaders, edgeContext) {
     try {
         // Strict Session ID Validation
         const sessionRegex = /^cs_(test|live)_[a-zA-Z0-9]{20,60}$/;
@@ -432,7 +440,7 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
                               event_type: "[NON_CRITICAL_FAULT] EMAIL RECEIPT FAILED",
                               severity: "LOW",
                               error_message: maskEmailInString(err.message || String(err)),
-                              metadata: { target_swarm: "Onyx Swarm" }
+                              metadata: { target_swarm: "Onyx Swarm", ...edgeContext }
                           }
                       };
                       await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
@@ -505,7 +513,7 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
                                 event_type: "[NON_CRITICAL_FAULT] EMAIL RECEIPT FAILED",
                                 severity: "LOW",
                                 error_message: maskEmailInString(err.message || String(err)),
-                                metadata: { target_swarm: "Onyx Swarm" }
+                                metadata: { target_swarm: "Onyx Swarm", ...edgeContext }
                             }
                         };
                         await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
@@ -528,13 +536,13 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
         const csvData = convertToCSV(cleanLeads);
 
         // ASYNC TASK A: Send Email to Customer via EmailIt (Decentralized)
-        ctx.waitUntil(safeExecuteWithTelemetry('sendEmailItFulfillment', () => sendEmailItFulfillment(env.EMAILIT_API_KEY, userEmail, csvData, filters), env, { userEmail, filters }));
+        ctx.waitUntil(safeExecuteWithTelemetry('sendEmailItFulfillment', () => sendEmailItFulfillment(env.EMAILIT_API_KEY, userEmail, csvData, filters), env, { userEmail, filters }, edgeContext));
 
         // ASYNC TASK B: Dual-Benefit - Send Leads to AXiM Core for Internal CRM
-        ctx.waitUntil(safeExecuteWithTelemetry('syncToAximCore', () => syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters, warningLog), env, { filters, leadCount: cleanLeads.length, warningLog }));
+        ctx.waitUntil(safeExecuteWithTelemetry('syncToAximCore', () => syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters, warningLog), env, { filters, leadCount: cleanLeads.length, warningLog }, edgeContext));
 
         // ASYNC TASK C: Log Execution to Core Ledger
-        ctx.waitUntil(safeExecuteWithTelemetry('logExecutionToLedger', () => logExecutionToLedger(env.AXIM_SERVICE_KEY, session_id, filters), env, { session_id, filters }));
+        ctx.waitUntil(safeExecuteWithTelemetry('logExecutionToLedger', () => logExecutionToLedger(env.AXIM_SERVICE_KEY, session_id, filters), env, { session_id, filters }, edgeContext));
 
         return new Response(JSON.stringify({ status: "fulfilled", count: cleanLeads.length, dropped: droppedCount }), {
           status: 200,
@@ -543,7 +551,7 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
     } catch (error) {
         const errorHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
 
-        logForegroundTelemetry(ctx, error, routePath);
+        logForegroundTelemetry(ctx, error, routePath, edgeContext);
 
         if (error.message && error.message.toLowerCase().includes("timeout")) {
           return new Response(JSON.stringify({ error: "Gateway Timeout: Upstream extraction exceeded time limits." }), { status: 504, headers: errorHeaders });
@@ -555,7 +563,7 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
 
 // --- HELPER FUNCTIONS ---
 
-async function safeExecuteWithTelemetry(taskName, taskFn, env, runtimeParams = {}) {
+async function safeExecuteWithTelemetry(taskName, taskFn, env, runtimeParams = {}, edgeContext = {}) {
   try {
     await taskFn();
   } catch (error) {
@@ -786,7 +794,7 @@ async function logExecutionToLedger(aximKey, sessionId, filters) {
 }
 
 
-function logForegroundTelemetry(ctx, error, routePath) {
+function logForegroundTelemetry(ctx, error, routePath, edgeContext) {
   const isTimeout = error.message && error.message.toLowerCase().includes("timeout");
 
   ctx.waitUntil(
