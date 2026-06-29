@@ -108,6 +108,7 @@ export default {
       if (!env.SCRAPING_API_KEY) missingKeys.push('SCRAPING_API_KEY');
       if (!env.EMAILIT_API_KEY) missingKeys.push('EMAILIT_API_KEY');
       if (!env.AXIM_SERVICE_KEY) missingKeys.push('AXIM_SERVICE_KEY');
+      if (!env.STRIPE_WEBHOOK_SECRET) missingKeys.push('STRIPE_WEBHOOK_SECRET');
 
       if (missingKeys.length > 0) {
         const payload = {
@@ -236,6 +237,9 @@ export default {
         const verify = await fetch(`https://api.stripe.com/v1/checkout/sessions/${session_id}`, {
           headers: { 'Authorization': `Bearer ${env.STRIPE_SECRET_KEY}` }
         });
+        if (!verify.ok) {
+            return new Response(JSON.stringify({ error: "UPSTREAM_VERIFICATION_FAILED" }), { status: 502, headers: corsHeaders });
+        }
         const session = await verify.json();
         
         if (session.payment_status !== 'paid') {

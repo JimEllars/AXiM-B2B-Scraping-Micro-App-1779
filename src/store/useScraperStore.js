@@ -20,6 +20,7 @@ export const useScraperStore = create((set, get) => ({
   checkoutError: null,
   isOnline: navigator.onLine,
   
+  updateEmail: (email) => set({ email, checkoutError: null }),
   updateFilter: (key, value) => {
     set(state => {
       const newFilters = { ...state.filters, [key]: value };
