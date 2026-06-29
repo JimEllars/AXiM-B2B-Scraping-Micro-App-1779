@@ -309,13 +309,17 @@ export default {
             // Since this is a webhook, we trigger and wait, but stripe expects a quick 200.
             // We use ctx.waitUntil to let the fulfillment run in the background.
             ctx.waitUntil(
-                executeFulfillmentPipeline(session_id, env, ctx, '/api/webhook', corsHeaders).catch(err => {
-                     console.error("Webhook fulfillment failed", err);
-                })
+                (async () => {
+                    try {
+                        await executeFulfillmentPipeline(session_id, env, ctx, '/api/webhook', corsHeaders);
+                    } catch (err) {
+                        console.error("Webhook fulfillment failed", err);
+                    }
+                })()
             );
         }
 
-        return new Response("OK", { status: 200 });
+        return new Response(JSON.stringify({ received: true }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
       } catch (error) {
         logForegroundTelemetry(ctx, error, '/api/webhook');

@@ -124,8 +124,16 @@ export default function LedgerModal({ isOpen, onClose }) {
                       </tr>
                     ) : filteredOrders.length === 0 ? (
                       <tr>
-                        <td colSpan="5" className="py-20 text-center text-[10px] font-mono text-gray-600 uppercase tracking-widest">
-                          No records found in current segment.
+                        <td colSpan="5" className="py-20 text-center flex flex-col items-center justify-center gap-4">
+                          <div className="text-[10px] font-mono text-gray-600 uppercase tracking-widest">
+                            No records found in current segment.
+                          </div>
+                          <button
+                            onClick={onClose}
+                            className="text-[10px] font-mono font-black text-axim-teal border border-axim-teal/30 bg-axim-teal/5 px-4 py-2 uppercase hover:bg-axim-teal/10 hover:border-axim-teal/50 transition-all"
+                          >
+                            [INITIATE NEW EXTRACTION]
+                          </button>
                         </td>
                       </tr>
                     ) : (
