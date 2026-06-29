@@ -82,7 +82,7 @@ export default function Wizard() {
                 onBlur={(e) => { setValidationError(''); updateFilter('industry', e.target.value.trim()) }}
                 placeholder="e.g. Solar, Roofing, SaaS"
                 disabled={isProcessing}
-                className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-1 focus:ring-axim-teal/20 focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-2 focus:ring-axim-teal/50 focus:shadow-[0_0_10px_rgba(0,229,255,0.2)] focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-800 group-focus-within/input:text-axim-teal/40 transition-colors">
                 <SafeIcon icon={FiSearch} />
@@ -98,7 +98,7 @@ export default function Wizard() {
               onBlur={(e) => { setValidationError(''); updateFilter('location', e.target.value.trim()) }}
               placeholder="City, State or Country"
               disabled={isProcessing}
-              className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-1 focus:ring-axim-teal/20 focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-2 focus:ring-axim-teal/50 focus:shadow-[0_0_10px_rgba(0,229,255,0.2)] focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
         </div>
@@ -112,7 +112,7 @@ export default function Wizard() {
               value={filters.size}
               onChange={(e) => { setValidationError(''); updateFilter('size', e.target.value) }}
               disabled={isProcessing}
-              className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:outline-none transition-all appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-2 focus:ring-axim-teal/50 focus:shadow-[0_0_10px_rgba(0,229,255,0.2)] focus:outline-none transition-all appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <option value="1-10">1-10 Employees</option>
               <option value="11-50">11-50 Employees</option>
@@ -131,7 +131,7 @@ export default function Wizard() {
               onChange={(e) => { setValidationError(''); updateFilter('keywords', e.target.value.replace(/[<>]/g, '')) }}
               placeholder="e.g. CEO, Marketing Director"
               disabled={isProcessing}
-              className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-2 focus:ring-axim-teal/50 focus:shadow-[0_0_10px_rgba(0,229,255,0.2)] focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
         </div>
@@ -149,7 +149,7 @@ export default function Wizard() {
               onBlur={(e) => { setValidationError(''); updateEmail(e.target.value.trim()) }}
               placeholder="operator@company.com"
               disabled={isProcessing}
-              className="w-full bg-black/50 border border-white/10 text-white py-4 pr-4 pl-12 rounded-xl font-mono text-sm focus:border-axim-teal focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-black/50 border border-white/10 text-white py-4 pr-4 pl-12 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-2 focus:ring-axim-teal/50 focus:shadow-[0_0_10px_rgba(0,229,255,0.2)] focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
         </div>
