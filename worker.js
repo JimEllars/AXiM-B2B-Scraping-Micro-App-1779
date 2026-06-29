@@ -223,6 +223,114 @@ export default {
 
         const { session_id } = await request.json();
         
+        const response = await executeFulfillmentPipeline(session_id, env, ctx, '/api/fulfill', corsHeaders);
+        return response;
+      } catch (error) {
+        logForegroundTelemetry(ctx, error, '/api/fulfill');
+        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+    }
+
+
+    // 3. ASYNCHRONOUS WEBHOOK FALLBACK
+    if (url.pathname === '/api/webhook' && request.method === 'POST') {
+      try {
+        const signature = request.headers.get('stripe-signature');
+        if (!signature) {
+          return new Response("Missing signature", { status: 400 });
+        }
+
+        const bodyText = await request.text();
+
+        // Web Crypto API signature verification
+        const encoder = new TextEncoder();
+        const secret = env.STRIPE_WEBHOOK_SECRET;
+
+        // Parse the signature header
+        const sigParts = signature.split(',').reduce((acc, part) => {
+            const [key, value] = part.split('=');
+            if (key && value) {
+                if (!acc[key]) acc[key] = [];
+                acc[key].push(value);
+            }
+            return acc;
+        }, {});
+
+        const t = sigParts['t'] ? sigParts['t'][0] : null;
+        const v1 = sigParts['v1'] ? sigParts['v1'] : [];
+
+        if (!t || v1.length === 0) {
+            return new Response("Invalid signature format", { status: 400 });
+        }
+
+        // Check timestamp against 5 minute tolerance
+        const currentTimestamp = Math.floor(Date.now() / 1000);
+        if (currentTimestamp - parseInt(t, 10) > 300) {
+             return new Response("Webhook signature expired", { status: 400 });
+        }
+
+        const signedPayload = `${t}.${bodyText}`;
+        const secretKeyData = encoder.encode(secret);
+
+        const cryptoKey = await crypto.subtle.importKey(
+            'raw',
+            secretKeyData,
+            { name: 'HMAC', hash: 'SHA-256' },
+            false,
+            ['verify']
+        );
+
+        let isValid = false;
+        for (const sig of v1) {
+            const sigBytes = new Uint8Array(sig.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+            const valid = await crypto.subtle.verify(
+                'HMAC',
+                cryptoKey,
+                sigBytes,
+                encoder.encode(signedPayload)
+            );
+            if (valid) {
+                isValid = true;
+                break;
+            }
+        }
+
+        if (!isValid) {
+            return new Response("Invalid signature", { status: 400 });
+        }
+
+        const event = JSON.parse(bodyText);
+
+        if (event.type === 'checkout.session.completed') {
+            const session = event.data.object;
+            const session_id = session.id;
+
+            // Execute fulfillment pipeline
+            // Since this is a webhook, we trigger and wait, but stripe expects a quick 200.
+            // We use ctx.waitUntil to let the fulfillment run in the background.
+            ctx.waitUntil(
+                executeFulfillmentPipeline(session_id, env, ctx, '/api/webhook', corsHeaders).catch(err => {
+                     console.error("Webhook fulfillment failed", err);
+                })
+            );
+        }
+
+        return new Response("OK", { status: 200 });
+
+      } catch (error) {
+        logForegroundTelemetry(ctx, error, '/api/webhook');
+        return new Response("Webhook Error", { status: 400 });
+      }
+    }
+
+    return new Response("Not Found", { status: 404, headers: { ...corsHeaders, 'Content-Type': 'text/plain' } });
+  }
+};
+
+
+
+async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsHeaders) {
+    try {
         // Strict Session ID Validation
         const sessionRegex = /^cs_(test|live)_[a-zA-Z0-9]{20,60}$/;
         if (!session_id || !sessionRegex.test(session_id)) {
@@ -231,7 +339,6 @@ export default {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           });
         }
-
 
         // Verify Stripe Payment
         const verify = await fetch(`https://api.stripe.com/v1/checkout/sessions/${session_id}`, {
@@ -251,17 +358,20 @@ export default {
           return new Response(JSON.stringify({ status: "already_fulfilled" }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
-        // Mark session as fulfilled in Stripe to prevent double processing
-        ctx.waitUntil(
-          fetch(`https://api.stripe.com/v1/checkout/sessions/${session_id}`, {
+        // ATOMIC LOCK: Synchronously mark session as fulfilled in Stripe to prevent double processing
+        try {
+          await fetch(`https://api.stripe.com/v1/checkout/sessions/${session_id}`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${env.STRIPE_SECRET_KEY}`,
               'Content-Type': 'application/x-www-form-urlencoded'
             },
             body: new URLSearchParams({ 'metadata[fulfilled]': 'true' })
-          }).catch(err => console.error("Failed to update Stripe session metadata", err))
-        );
+          });
+        } catch (err) {
+            console.error("Failed to update Stripe session metadata", err);
+            // We proceed but there might be a race condition if this failed.
+        }
 
         const filters = JSON.parse(session.metadata.filters);
         const userEmail = session.metadata.email;
@@ -337,8 +447,6 @@ export default {
 
           throw scrapeError;
         }
-
-
 
         // --- MEMORY HARDENING ---
         const safeLeads = scrapedLeads.slice(0, 5000);
@@ -428,22 +536,18 @@ export default {
           status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
-      } catch (error) {
+    } catch (error) {
         const errorHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
 
-        logForegroundTelemetry(ctx, error, '/api/fulfill');
+        logForegroundTelemetry(ctx, error, routePath);
 
         if (error.message && error.message.toLowerCase().includes("timeout")) {
           return new Response(JSON.stringify({ error: "Gateway Timeout: Upstream extraction exceeded time limits." }), { status: 504, headers: errorHeaders });
         }
 
         return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: errorHeaders });
-      }
     }
-
-    return new Response("Not Found", { status: 404, headers: { ...corsHeaders, 'Content-Type': 'text/plain' } });
-  }
-};
+}
 
 // --- HELPER FUNCTIONS ---
 
