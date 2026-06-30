@@ -109,7 +109,8 @@ export default {
 
 
     // A CF Bot Score below 30 indicates likely automated/malicious traffic
-    if (edgeContext.botScore !== 'N/A' && edgeContext.botScore < 30) {
+    const isWebhook = url.pathname === '/api/webhook';
+    if (!isWebhook && edgeContext.botScore !== 'N/A' && edgeContext.botScore < 30) {
       return new Response(JSON.stringify({ error: "EDGE_SECURITY_BLOCK" }), {
         status: 403,
         headers: corsHeaders
@@ -148,12 +149,12 @@ export default {
         ctx.waitUntil(
           fetch('https://api.axim.us.com/v1/telemetry/ingest', {
             method: 'POST',
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` },
             body: JSON.stringify(payload)
           }).catch(() => {})
         );
 
-        return new Response(JSON.stringify({ error: "Service Unavailable" }), { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: "Service Unavailable" }), { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` } });
       }
     }
 
@@ -193,7 +194,7 @@ export default {
         });
         
         const session = await stripeResponse.json();
-        return new Response(JSON.stringify(session), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify(session), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` } });
       } catch (error) {
         logForegroundTelemetry(ctx, error, '/api/checkout', edgeContext);
         const errorHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
@@ -234,7 +235,7 @@ export default {
               );
               return new Response(JSON.stringify({ error: "Bad Request: Webhook signature expired" }), {
                 status: 400,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` }
               });
             }
           }
@@ -242,11 +243,11 @@ export default {
 
         const { session_id } = await request.json();
         
-        const response = await executeFulfillmentPipeline(session_id, env, ctx, '/api/fulfill', corsHeaders, edgeContext);
+        const response = await executeFulfillmentPipeline(session_id, env, ctx, '/api/fulfill', corsHeaders, edgeContext, request);
         return response;
       } catch (error) {
         logForegroundTelemetry(ctx, error, '/api/fulfill', edgeContext);
-        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` } });
       }
     }
 
@@ -330,7 +331,7 @@ export default {
             ctx.waitUntil(
                 (async () => {
                     try {
-                        await executeFulfillmentPipeline(session_id, env, ctx, '/api/webhook', corsHeaders, edgeContext);
+                        await executeFulfillmentPipeline(session_id, env, ctx, '/api/webhook', corsHeaders, edgeContext, request);
                     } catch (err) {
                         console.error("Webhook fulfillment failed", err);
                     }
@@ -338,7 +339,7 @@ export default {
             );
         }
 
-        return new Response(JSON.stringify({ received: true }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ received: true }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` } });
 
       } catch (error) {
         logForegroundTelemetry(ctx, error, '/api/webhook', edgeContext);
@@ -352,14 +353,14 @@ export default {
 
 
 
-async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsHeaders, edgeContext) {
+async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsHeaders, edgeContext, request) {
     try {
         // Strict Session ID Validation
         const sessionRegex = /^cs_(test|live)_[a-zA-Z0-9]{20,60}$/;
         if (!session_id || !sessionRegex.test(session_id)) {
           return new Response(JSON.stringify({ error: "Bad Request: Invalid session ID format" }), {
             status: 400,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` }
           });
         }
 
@@ -373,12 +374,12 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
         const session = await verify.json();
         
         if (session.payment_status !== 'paid') {
-          return new Response(JSON.stringify({ error: "Payment unverified" }), { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          return new Response(JSON.stringify({ error: "Payment unverified" }), { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` } });
         }
 
         // Idempotency: Ensure we haven't already processed this session
         if (session.metadata && session.metadata.fulfilled === 'true') {
-          return new Response(JSON.stringify({ status: "already_fulfilled" }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          return new Response(JSON.stringify({ status: "already_fulfilled" }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` } });
         }
 
         // ATOMIC LOCK: Synchronously mark session as fulfilled in Stripe to prevent double processing
@@ -541,7 +542,7 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
 
             return new Response(JSON.stringify({ status: "empty_refunded", count: 0 }), {
                 status: 200,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` }
             });
         }
         const csvData = convertToCSV(cleanLeads);
@@ -557,7 +558,7 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
 
         return new Response(JSON.stringify({ status: "fulfilled", count: cleanLeads.length, dropped: droppedCount }), {
           status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` }
         });
     } catch (error) {
         const errorHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };

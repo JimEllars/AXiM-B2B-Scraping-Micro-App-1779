@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { useScraperStore } from '../store/useScraperStore';
 import LogTerminal from '../components/LogTerminal';
 import SafeIcon from '../common/SafeIcon';
@@ -7,6 +7,7 @@ import { FiCheckCircle, FiAlertOctagon, FiArrowLeft, FiMail, FiCpu, FiExternalLi
 import { Feedback } from '@questlabs/react-sdk';
 
 export default function Success() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('session_id');
 
@@ -41,6 +42,13 @@ export default function Success() {
       triggerFulfillment(sessionId);
     }
   }, [sessionId, triggerFulfillment]);
+
+  useEffect(() => {
+    if (!sessionId || fulfillmentStatus === 'idle') {
+      navigate('/');
+    }
+  }, [sessionId, fulfillmentStatus, navigate]);
+
 
   const feedbackStyle = {
     Form: { backgroundColor: '#0a0a0a', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '24px', padding: '32px' },
