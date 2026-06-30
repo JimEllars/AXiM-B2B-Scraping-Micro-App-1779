@@ -10,6 +10,7 @@ import { useScraperStore } from './store/useScraperStore';
 
 function App() {
   const isOnline = useScraperStore((state) => state.isOnline);
+  const activeNode = useScraperStore((state) => state.activeNode);
 
   React.useEffect(() => {
     if (isOnline === false) {
@@ -57,7 +58,7 @@ function App() {
           <div className="flex items-center gap-4">
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/10 bg-white/5">
               <div className="w-2 h-2 rounded-full bg-axim-teal animate-pulse"></div>
-              <span className="text-[9px] font-mono text-gray-400 tracking-wider">NODE_049_ACTIVE // SECURE_LINK</span>
+              <span className="text-[9px] font-mono text-gray-400 tracking-wider">{activeNode}</span>
             </div>
           </div>
         </header>

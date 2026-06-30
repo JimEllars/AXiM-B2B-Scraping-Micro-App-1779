@@ -19,6 +19,7 @@ export const useScraperStore = create((set, get) => ({
   idempotencyKey: generateIdempotencyKey(),
   checkoutError: null,
   isOnline: navigator.onLine,
+  activeNode: 'NODE_049_ACTIVE // SECURE_LINK',
   
   updateEmail: (email) => set({ email, checkoutError: null }),
   updateFilter: (key, value) => {
@@ -108,6 +109,10 @@ export const useScraperStore = create((set, get) => ({
         addLog(`[SYS_RAY_TRACE: ${rayId}]`);
       }
       if (data.url) {
+        const geo = res.headers.get('X-AXiM-Geo');
+        if (geo) {
+          set({ activeNode: `NODE_[${geo}] // SECURE_LINK` });
+        }
         set({ idempotencyKey: generateIdempotencyKey() });
         window.location.href = data.url;
       } else {
