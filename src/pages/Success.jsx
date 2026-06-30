@@ -16,6 +16,14 @@ export default function Success() {
   const { fulfillmentStatus, triggerFulfillment, filters, estimatedLeads, currentOrderId } = useScraperStore();
 
   useEffect(() => {
+    return () => {
+      // Purge state if the user navigates away via browser controls
+      useScraperStore.getState().hardResetSystem();
+    };
+  }, []);
+
+
+  useEffect(() => {
     if (fulfillmentStatus === 'completed' && !analyticsTriggered.current) {
       analyticsTriggered.current = true;
       if (typeof window !== 'undefined' && window.aximTag) {

@@ -66,7 +66,8 @@ export default {
     const edgeContext = {
       colo: request.cf?.colo || 'UNKNOWN',
       country: request.cf?.country || 'UNKNOWN',
-      rayId: request.headers.get('cf-ray') || 'UNKNOWN'
+      rayId: request.headers.get('cf-ray') || 'UNKNOWN',
+      botScore: request.cf?.botManagement?.score ?? 'N/A'
     };
     const rateLimitUrl = new URL(request.url);
 
@@ -103,7 +104,17 @@ export default {
       'Access-Control-Allow-Origin': allowedOrigin,
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, stripe-signature',
+      'Access-Control-Max-Age': '86400'
     };
+
+
+    // A CF Bot Score below 30 indicates likely automated/malicious traffic
+    if (edgeContext.botScore !== 'N/A' && edgeContext.botScore < 30) {
+      return new Response(JSON.stringify({ error: "EDGE_SECURITY_BLOCK" }), {
+        status: 403,
+        headers: corsHeaders
+      });
+    }
 
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders });
