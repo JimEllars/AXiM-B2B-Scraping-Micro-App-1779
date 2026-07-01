@@ -17,10 +17,9 @@ export default function Success() {
   const { fulfillmentStatus, triggerFulfillment, filters, estimatedLeads, currentOrderId } = useScraperStore();
 
   useEffect(() => {
-    return () => {
-      // Purge state if the user navigates away via browser controls
-      useScraperStore.getState().hardResetSystem();
-    };
+    const handlePopState = () => useScraperStore.getState().hardResetSystem();
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
 

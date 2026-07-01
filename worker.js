@@ -146,12 +146,15 @@ export default {
           }
         };
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
         ctx.waitUntil(
           fetch('https://api.axim.us.com/v1/telemetry/ingest', {
             method: 'POST',
             headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` },
-            body: JSON.stringify(payload)
-          }).catch(() => {})
+            body: JSON.stringify(payload),
+            signal: controller.signal
+          }).then(() => clearTimeout(timeoutId)).catch(() => clearTimeout(timeoutId))
         );
 
         return new Response(JSON.stringify({ error: "Service Unavailable" }), { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` } });
