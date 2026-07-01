@@ -86,6 +86,29 @@ export default {
     const allowedOrigin = env.FRONTEND_URL || 'http://localhost:5173';
     const url = new URL(request.url);
 
+
+    const rayIdHeader = request.headers.get('cf-ray') || 'UNKNOWN';
+    const corsHeaders = {
+      'X-AXiM-Ray-ID': rayIdHeader,
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+      'Access-Control-Allow-Origin': allowedOrigin,
+      'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, stripe-signature',
+      'Access-Control-Max-Age': '86400'
+    };
+
+    if (url.pathname.startsWith('/api/status/')) {
+        const id = url.pathname.split('/').pop();
+        try {
+            const data = await env.KV_BINDING.get(id, { type: "json" });
+            return new Response(JSON.stringify({ count: data ? data.length : 0 }), { headers: corsHeaders });
+        } catch (err) {
+             return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
+        }
+    }
+
     if (url.pathname.startsWith('/api/')) {
       if (origin !== allowedOrigin) {
         return new Response(JSON.stringify({ error: "Forbidden: Invalid Origin" }), {
@@ -95,17 +118,7 @@ export default {
       }
     }
 
-    const rayIdHeader = request.headers.get('cf-ray') || 'UNKNOWN';
-    const corsHeaders = {
-      'X-AXiM-Ray-ID': rayIdHeader,
-      'X-Content-Type-Options': 'nosniff',
-      'X-Frame-Options': 'DENY',
-      'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-      'Access-Control-Allow-Origin': allowedOrigin,
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, stripe-signature',
-      'Access-Control-Max-Age': '86400'
-    };
+
 
 
     // A CF Bot Score below 30 indicates likely automated/malicious traffic
@@ -252,6 +265,35 @@ export default {
         logForegroundTelemetry(ctx, error, '/api/fulfill', edgeContext);
         return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` } });
       }
+    }
+
+
+
+    // 2.5 CONTINUE SCRAPE ENDPOINT
+    if (url.pathname === '/api/continue-scrape' && request.method === 'POST') {
+        try {
+            const body = await request.json();
+            const { session_id, cursor, filters } = body;
+
+            if (!session_id || !filters) {
+                return new Response(JSON.stringify({ error: "Missing required parameters" }), { status: 400, headers: corsHeaders });
+            }
+
+            ctx.waitUntil(
+                (async () => {
+                    try {
+                        await executeScrape(env.SCRAPING_API_KEY, filters, env, ctx, session_id, cursor, request);
+                    } catch (err) {
+                        console.error("Continued scrape failed", err);
+                    }
+                })()
+            );
+
+            return new Response(JSON.stringify({ status: "continued" }), { status: 200, headers: corsHeaders });
+        } catch (error) {
+            logForegroundTelemetry(ctx, error, '/api/continue-scrape', edgeContext);
+            return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders });
+        }
     }
 
 
@@ -406,7 +448,7 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
         // Execute Scraping Logic (Mocked external API call)
         let scrapedLeads = [];
         try {
-          const extractionPromise = executeScrape(env.SCRAPING_API_KEY, filters);
+          const extractionPromise = executeScrape(env.SCRAPING_API_KEY, filters, env, ctx, session_id, null, request);
           const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error("UPSTREAM_TIMEOUT")), 25000)
           );
@@ -674,17 +716,28 @@ function sanitizeLeads(leads) {
   };
 }
 
-async function executeScrape(apiKey, filters) {
+async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = null, request) {
   try {
+    // 1. Initialize State from KV
+    let currentCohort = [];
+    if (session_id) {
+        currentCohort = await env.KV_BINDING.get(session_id, { type: "json" }) || [];
+    }
+
+    // 2. Adjust Payload for Chunking
     const payload = {
       industry: filters.industry,
       location: filters.location,
       size: filters.size,
-      keywords: filters.keywords
+      keywords: filters.keywords,
+      limit: 50 // Limit batch size to prevent timeouts
     };
+    if (cursor) {
+        payload.cursor = cursor; // Assuming Apify actor supports 'cursor' or similar
+    }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout for Edge
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // Reduced timeout to 10s for chunks
 
     const response = await fetch('https://api.apify.com/v2/actor-tasks/axim-scraper/run-sync-get-dataset-items', {
       method: 'POST',
@@ -703,11 +756,39 @@ async function executeScrape(apiKey, filters) {
 
     const data = await response.json();
 
-    if (!Array.isArray(data) || data.length === 0) {
-      return [];
+    const scrapedItems = Array.isArray(data) ? data : (data.items || []);
+
+    // 3. Save State
+    currentCohort = currentCohort.concat(scrapedItems);
+    if (session_id && currentCohort.length > 0) {
+        // Save the updated array back to KV store, expiring in 1 hour
+        await env.KV_BINDING.put(session_id, JSON.stringify(currentCohort), { expirationTtl: 3600 });
     }
 
-    return data;
+    // 4. Check for Next Page and Self-Trigger
+    // Assuming Apify returns 'has_next_page' and 'next_cursor' in the response metadata (or similar pattern)
+    // For arrays returned directly, we might need to rely on the length == limit. Here we implement a theoretical 'next_cursor'
+    let nextCursor = data.next_cursor || (scrapedItems.length === 50 ? (cursor ? cursor + 50 : 50) : null);
+    // If the API directly returns an array we use pagination logic above. If it returns an object, we use data.next_cursor
+
+    if (nextCursor && session_id) {
+        // Trigger self asynchronously
+        const selfUrl = new URL(request.url);
+        selfUrl.pathname = '/api/continue-scrape';
+
+        ctx.waitUntil(
+            fetch(selfUrl.toString(), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Origin': env.FRONTEND_URL || 'http://localhost:5173'
+                },
+                body: JSON.stringify({ session_id, cursor: nextCursor, filters })
+            }).catch(err => console.error("Failed to self-trigger continue scrape", err))
+        );
+    }
+
+    return currentCohort;
   } catch (err) {
     if (err.name === 'AbortError') {
       throw new Error("Scrape execution timeout: The scraping task took too long and timed out at the edge.");
