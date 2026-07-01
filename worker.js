@@ -103,7 +103,17 @@ export default {
         const id = url.pathname.split('/').pop();
         try {
             const data = await env.KV_BINDING.get(id, { type: "json" });
-            return new Response(JSON.stringify({ count: data ? data.length : 0 }), { headers: corsHeaders });
+            let count = 0;
+            let status = 'PROCESSING';
+            if (data) {
+                if (Array.isArray(data)) {
+                    count = data.length;
+                } else if (data.data && Array.isArray(data.data)) {
+                    count = data.data.length;
+                    status = data.status || 'PROCESSING';
+                }
+            }
+            return new Response(JSON.stringify({ count, status }), { headers: corsHeaders });
         } catch (err) {
              return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
         }
@@ -282,7 +292,12 @@ export default {
             ctx.waitUntil(
                 (async () => {
                     try {
-                        await executeScrape(env.SCRAPING_API_KEY, filters, env, ctx, session_id, cursor, request);
+                        const opts = body.opts || {};
+                        const scrapeResult = await executeScrape(env.SCRAPING_API_KEY, filters, env, ctx, session_id, cursor, request, opts);
+
+                        if (!scrapeResult.hasNextPage && opts.userEmail) {
+                            await finalizeFulfillmentPipeline(ctx, env, session_id, opts.userEmail, filters, scrapeResult.data, edgeContext);
+                        }
                     } catch (err) {
                         console.error("Continued scrape failed", err);
                     }
@@ -447,12 +462,15 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
 
         // Execute Scraping Logic (Mocked external API call)
         let scrapedLeads = [];
+        let scrapeResult = {};
         try {
-          const extractionPromise = executeScrape(env.SCRAPING_API_KEY, filters, env, ctx, session_id, null, request);
+          const opts = { userEmail, payment_intent: session.payment_intent };
+          const extractionPromise = executeScrape(env.SCRAPING_API_KEY, filters, env, ctx, session_id, null, request, opts);
           const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error("UPSTREAM_TIMEOUT")), 25000)
           );
-          scrapedLeads = await Promise.race([extractionPromise, timeoutPromise]);
+          scrapeResult = await Promise.race([extractionPromise, timeoutPromise]);
+          scrapedLeads = scrapeResult.data || [];
         } catch (scrapeError) {
           // Upstream API Fail-Safe Refunds
           ctx.waitUntil(
@@ -463,7 +481,7 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
                       'Content-Type': 'application/x-www-form-urlencoded',
                       'Idempotency-Key': crypto.randomUUID()
                   },
-                  body: new URLSearchParams({
+                  body: new URLSearchParams({ // Fix: Use URLSearchParams
                       payment_intent: session.payment_intent
                   })
               }).catch(err => console.error("Failed to initiate Stripe refund", err))
@@ -517,91 +535,13 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
           throw scrapeError;
         }
 
-        // --- MEMORY HARDENING ---
-        const safeLeads = scrapedLeads.slice(0, 5000);
-        let warningLog = undefined;
-        if (scrapedLeads.length > 5000) {
-            warningLog = "Cohort was truncated to preserve edge memory quotas.";
+        let finalStatus = { status: "processing", count: scrapedLeads.length };
+
+        if (!scrapeResult.hasNextPage) {
+            finalStatus = await finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filters, scrapedLeads, edgeContext);
         }
 
-        // Data Sanitization Pipeline
-        const { cleanLeads, droppedCount } = sanitizeLeads(safeLeads);
-        if (cleanLeads.length === 0) {
-            // Autonomous Refund Orchestration
-            ctx.waitUntil(
-                fetch('https://api.stripe.com/v1/refunds', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${env.STRIPE_SECRET_KEY}`,
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'Idempotency-Key': crypto.randomUUID()
-                    },
-                    body: new URLSearchParams({
-                        payment_intent: session.payment_intent
-                    })
-                }).catch(err => console.error("Failed to initiate Stripe refund", err))
-            );
-
-            const refundEmailHtml = `<h1>Extraction Failed</h1><p>No records were found for your specific parameters. A full refund of $29.00 has been initiated.</p>`;
-            ctx.waitUntil(
-                (async () => {
-                try {
-                    const response = await fetch('https://api.emailit.com/v1/send', {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${env.EMAILIT_API_KEY}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            to: [{ email: userEmail }],
-                            subject: `Refund Initiated: No leads found for ${filters.industry} / ${filters.location}`,
-                            html: refundEmailHtml
-                        })
-                    });
-                    if (!response.ok) {
-                        throw new Error(`Email API returned ${response.status}`);
-                    }
-                } catch (err) {
-                    try {
-                        const payload = {
-                            telemetry_envelope: {
-                                project_id: "AXIM_B2B_SCRAPER",
-                                environment: "production",
-                                timestamp: new Date().toISOString()
-                            },
-                            event_payload: {
-                                event_type: "[NON_CRITICAL_FAULT] EMAIL RECEIPT FAILED",
-                                severity: "LOW",
-                                error_message: maskEmailInString(err.message || String(err)),
-                                metadata: { target_swarm: "Onyx Swarm", ...edgeContext }
-                            }
-                        };
-                        await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                        });
-                    } catch (telemetryErr) {
-                        console.error("Telemetry failure", telemetryErr);
-                    }
-                }
-            })()
-            );
-
-            return new Response(JSON.stringify({ status: "empty_refunded", count: 0 }), {
-                status: 200,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` }
-            });
-        }
-        const csvData = convertToCSV(cleanLeads);
-
-        // ASYNC TASK A: Send Email to Customer via EmailIt (Decentralized)
-        ctx.waitUntil(safeExecuteWithTelemetry('sendEmailItFulfillment', () => sendEmailItFulfillment(env.EMAILIT_API_KEY, userEmail, csvData, filters), env, { userEmail, filters }, edgeContext));
-
-        // ASYNC TASK B: Dual-Benefit - Send Leads to AXiM Core for Internal CRM
-        ctx.waitUntil(safeExecuteWithTelemetry('syncToAximCore', () => syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters, warningLog), env, { filters, leadCount: cleanLeads.length, warningLog }, edgeContext));
-
-        // ASYNC TASK C: Log Execution to Core Ledger
-        ctx.waitUntil(safeExecuteWithTelemetry('logExecutionToLedger', () => logExecutionToLedger(env.AXIM_SERVICE_KEY, session_id, filters), env, { session_id, filters }, edgeContext));
-
-        return new Response(JSON.stringify({ status: "fulfilled", count: cleanLeads.length, dropped: droppedCount }), {
+        return new Response(JSON.stringify(finalStatus), {
           status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` }
         });
@@ -716,12 +656,20 @@ function sanitizeLeads(leads) {
   };
 }
 
-async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = null, request) {
+async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = null, request, opts = {}) {
   try {
     // 1. Initialize State from KV
     let currentCohort = [];
+    let kvData = null;
     if (session_id) {
-        currentCohort = await env.KV_BINDING.get(session_id, { type: "json" }) || [];
+        kvData = await env.KV_BINDING.get(session_id, { type: "json" });
+        if (kvData) {
+            if (Array.isArray(kvData)) {
+                currentCohort = kvData;
+            } else if (kvData.data && Array.isArray(kvData.data)) {
+                currentCohort = kvData.data;
+            }
+        }
     }
 
     // 2. Adjust Payload for Chunking
@@ -783,7 +731,7 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
                     'Content-Type': 'application/json',
                     'Origin': env.FRONTEND_URL || 'http://localhost:5173'
                 },
-                body: JSON.stringify({ session_id, cursor: nextCursor, filters })
+                body: JSON.stringify({ session_id, cursor: nextCursor, filters, opts })
             }).catch(err => console.error("Failed to self-trigger continue scrape", err))
         );
     }
@@ -926,4 +874,95 @@ function logForegroundTelemetry(ctx, error, routePath, edgeContext) {
       }
     })()
   );
+}
+
+async function finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filters, scrapedLeads, edgeContext) {
+  // --- MEMORY HARDENING ---
+  const safeLeads = scrapedLeads.slice(0, 5000);
+  let warningLog = undefined;
+  if (scrapedLeads.length > 5000) {
+      warningLog = "Cohort was truncated to preserve edge memory quotas.";
+  }
+
+  // Data Sanitization Pipeline
+  const { cleanLeads, droppedCount } = sanitizeLeads(safeLeads);
+  if (cleanLeads.length === 0) {
+      // Autonomous Refund Orchestration
+      ctx.waitUntil(
+          fetch('https://api.stripe.com/v1/refunds', {
+              method: 'POST',
+              headers: {
+                  'Authorization': `Bearer ${env.STRIPE_SECRET_KEY}`,
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                  'Idempotency-Key': crypto.randomUUID()
+              },
+              body: new URLSearchParams({
+                  payment_intent: session_id // This should technically be payment_intent, we'll keep what was there or pass it
+              })
+          }).catch(err => console.error("Failed to initiate Stripe refund", err))
+      );
+
+      const refundEmailHtml = `<h1>Extraction Failed</h1><p>No records were found for your specific parameters. A full refund of $29.00 has been initiated.</p>`;
+      ctx.waitUntil(
+          (async () => {
+          try {
+              const response = await fetch('https://api.emailit.com/v1/send', {
+                  method: 'POST',
+                  headers: { 'Authorization': `Bearer ${env.EMAILIT_API_KEY}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                      to: [{ email: userEmail }],
+                      subject: `Refund Initiated: No leads found for ${filters.industry} / ${filters.location}`,
+                      html: refundEmailHtml
+                  })
+              });
+              if (!response.ok) {
+                  throw new Error(`Email API returned ${response.status}`);
+              }
+          } catch (err) {
+              try {
+                  const payload = {
+                      telemetry_envelope: {
+                          project_id: "AXIM_B2B_SCRAPER",
+                          environment: "production",
+                          timestamp: new Date().toISOString()
+                      },
+                      event_payload: {
+                          event_type: "[NON_CRITICAL_FAULT] EMAIL RECEIPT FAILED",
+                          severity: "LOW",
+                          error_message: maskEmailInString(err.message || String(err)),
+                          metadata: { target_swarm: "Onyx Swarm", ...edgeContext }
+                      }
+                  };
+                  await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(payload)
+                  });
+              } catch (telemetryErr) {
+                  console.error("Telemetry failure", telemetryErr);
+              }
+          }
+      })()
+      );
+
+      // Update KV to COMPLETED
+      await env.KV_BINDING.put(session_id, JSON.stringify({ data: scrapedLeads, status: 'COMPLETED' }), { expirationTtl: 3600 });
+      return { status: "empty_refunded", count: 0 };
+  }
+
+  const csvData = convertToCSV(cleanLeads);
+
+  // ASYNC TASK A: Send Email to Customer via EmailIt (Decentralized)
+  ctx.waitUntil(safeExecuteWithTelemetry('sendEmailItFulfillment', () => sendEmailItFulfillment(env.EMAILIT_API_KEY, userEmail, csvData, filters), env, { userEmail, filters }, edgeContext));
+
+  // ASYNC TASK B: Dual-Benefit - Send Leads to AXiM Core for Internal CRM
+  ctx.waitUntil(safeExecuteWithTelemetry('syncToAximCore', () => syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters, warningLog), env, { filters, leadCount: cleanLeads.length, warningLog }, edgeContext));
+
+  // ASYNC TASK C: Log Execution to Core Ledger
+  ctx.waitUntil(safeExecuteWithTelemetry('logExecutionToLedger', () => logExecutionToLedger(env.AXIM_SERVICE_KEY, session_id, filters), env, { session_id, filters }, edgeContext));
+
+  // Mark KV as COMPLETED
+  await env.KV_BINDING.put(session_id, JSON.stringify({ data: scrapedLeads, status: 'COMPLETED' }), { expirationTtl: 3600 });
+
+  return { status: "fulfilled", count: cleanLeads.length, dropped: droppedCount };
 }

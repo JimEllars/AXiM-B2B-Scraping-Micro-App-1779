@@ -1,0 +1,7 @@
+name = "axim-b2b-scraper"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "KV_BINDING"
+id = "d858ab5b1b41428dbf8b13717a4e930a"
