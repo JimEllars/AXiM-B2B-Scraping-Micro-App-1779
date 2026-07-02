@@ -177,7 +177,9 @@ export const useScraperStore = create((set, get) => ({
       set({ fulfillmentStatus: 'scraping' });
 
       // 2. Poll the KV status endpoint
-      const pollInterval = setInterval(async () => {
+      let isPolling = true;
+      const pollStatus = async () => {
+        if (!isPolling) return;
         try {
           const res = await fetch(`/api/status/${sessionId}`);
           if (res.ok) {
@@ -187,37 +189,44 @@ export const useScraperStore = create((set, get) => ({
                addLog(`[KV_SYNC] ${data.count} records successfully extracted to Edge storage...`);
             }
             if (data.status === 'COMPLETED') {
-               clearInterval(pollInterval);
+               isPolling = false;
                set({ fulfillmentStatus: 'completed' });
                addLog("Mission Complete: Leads Dispatched.");
                await orderService.updateOrderStatus(sessionId, 'COMPLETED', data.count || estimatedLeads);
+               return; // Exit polling loop
             }
           }
         } catch (e) {
           // Ignore polling errors to let it keep retrying
         }
-      }, 3000);
+
+        if (isPolling) {
+            setTimeout(pollStatus, 3000); // Queue next poll
+        }
+      };
+
+      pollStatus(); // Initial call
 
       // 3. Keep an eye on the fetch promise in case it fails or finishes with an error early
       const finalRes = await fetchPromise;
       if (finalRes._isNetworkError) {
-        clearInterval(pollInterval);
+        isPolling = false;
         throw new Error(`Network failure: ${finalRes.error.message}`);
       }
       if (!finalRes.ok) {
-        clearInterval(pollInterval);
+        isPolling = false;
         const errorData = await finalRes.json().catch(() => ({}));
         throw new Error(errorData.error || `Fulfillment failed with status ${finalRes.status}`);
       }
       const data = await finalRes.json();
 
       if (data.status === 'empty_refunded') {
-        clearInterval(pollInterval);
+        isPolling = false;
         addLog("[REFUND_ISSUED] 0 MATCHING RECORDS FOUND. PAYMENT REVERSED.");
         set({ fulfillmentStatus: 'refunded' });
         return;
       } else if (data.status === 'already_fulfilled') {
-        clearInterval(pollInterval);
+        isPolling = false;
         addLog("[SYSTEM] LEDGER RECONCILED. DISPATCH ALREADY COMPLETED.");
         set({ fulfillmentStatus: 'completed' });
         return;

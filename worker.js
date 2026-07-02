@@ -147,13 +147,15 @@ export default {
     if (url.pathname.startsWith('/api/')) {
       const missingKeys = [];
       if (!env.STRIPE_SECRET_KEY) missingKeys.push('STRIPE_SECRET_KEY');
-      if (!env.SCRAPING_API_KEY) missingKeys.push('SCRAPING_API_KEY');
+      if (!env.APIFY_API_TOKEN) missingKeys.push('APIFY_API_TOKEN');
       if (!env.EMAILIT_API_KEY) missingKeys.push('EMAILIT_API_KEY');
       if (!env.AXIM_SERVICE_KEY) missingKeys.push('AXIM_SERVICE_KEY');
       if (!env.STRIPE_WEBHOOK_SECRET) missingKeys.push('STRIPE_WEBHOOK_SECRET');
 
       if (missingKeys.length > 0) {
-        const payload = {
+
+
+    const payload = {
           telemetry_envelope: {
             metadata: edgeContext,
             project_id: "AXIM_B2B_SCRAPER",
@@ -293,7 +295,7 @@ export default {
                 (async () => {
                     try {
                         const opts = body.opts || {};
-                        const scrapeResult = await executeScrape(env.SCRAPING_API_KEY, filters, env, ctx, session_id, cursor, request, opts);
+                        const scrapeResult = await executeScrape(env.APIFY_API_TOKEN, filters, env, ctx, session_id, cursor, request, opts);
 
                         if (!scrapeResult.hasNextPage && opts.userEmail) {
                             await finalizeFulfillmentPipeline(ctx, env, session_id, opts.userEmail, filters, scrapeResult.data, edgeContext);
@@ -465,7 +467,7 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
         let scrapeResult = {};
         try {
           const opts = { userEmail, payment_intent: session.payment_intent };
-          const extractionPromise = executeScrape(env.SCRAPING_API_KEY, filters, env, ctx, session_id, null, request, opts);
+          const extractionPromise = executeScrape(env.APIFY_API_TOKEN, filters, env, ctx, session_id, null, request, opts);
           const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error("UPSTREAM_TIMEOUT")), 25000)
           );
@@ -706,11 +708,14 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
 
     const scrapedItems = Array.isArray(data) ? data : (data.items || []);
 
+
+
+
     // 3. Save State
     currentCohort = currentCohort.concat(scrapedItems);
     if (session_id && currentCohort.length > 0) {
         // Save the updated array back to KV store, expiring in 1 hour
-        await env.KV_BINDING.put(session_id, JSON.stringify(currentCohort), { expirationTtl: 3600 });
+        await env.KV_BINDING.put(session_id, JSON.stringify({ data: currentCohort, status: 'PROCESSING' }), { expirationTtl: 3600 });
     }
 
     // 4. Check for Next Page and Self-Trigger
@@ -719,10 +724,50 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
     let nextCursor = data.next_cursor || (scrapedItems.length === 50 ? (cursor ? cursor + 50 : 50) : null);
     // If the API directly returns an array we use pagination logic above. If it returns an object, we use data.next_cursor
 
+
+
+
     if (nextCursor && session_id) {
+        const chunk_iteration = opts.chunk_iteration || 1;
+        if (chunk_iteration >= 10) {
+            // CIRCUIT BREAKER: Hard stop at 10 iterations
+            await env.KV_BINDING.put(session_id, JSON.stringify({ data: currentCohort, status: 'COMPLETED' }), { expirationTtl: 3600 });
+
+            if (opts.userEmail) {
+                const { cleanLeads } = sanitizeLeads(currentCohort);
+                const csvData = convertToCSV(cleanLeads);
+
+                ctx.waitUntil(
+                    sendEmailItFulfillment(env.EMAILIT_API_KEY, opts.userEmail, csvData, filters)
+                    .catch(err => console.error("Failed to send partial fulfillment", err))
+                );
+            }
+
+            // Log telemetry
+            ctx.waitUntil(
+                fetch('https://api.axim.us.com/v1/telemetry/ingest', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        telemetry_envelope: { project_id: "AXIM_B2B_SCRAPER", environment: "production", timestamp: new Date().toISOString() },
+                        event_payload: {
+                            event_type: "[CIRCUIT_BREAKER_TRIPPED]",
+                            severity: "HIGH",
+                            error_message: "Recursive scrape loop hit 10 iterations hard-stop.",
+                            metadata: { session_id, filters }
+                        }
+                    })
+                }).catch(err => console.error("Failed telemetry for circuit breaker", err))
+            );
+
+            return currentCohort; // Stop recursion
+        }
+
         // Trigger self asynchronously
         const selfUrl = new URL(request.url);
         selfUrl.pathname = '/api/continue-scrape';
+
+        opts.chunk_iteration = chunk_iteration + 1;
 
         ctx.waitUntil(
             fetch(selfUrl.toString(), {
@@ -735,6 +780,7 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
             }).catch(err => console.error("Failed to self-trigger continue scrape", err))
         );
     }
+
 
     return currentCohort;
   } catch (err) {
