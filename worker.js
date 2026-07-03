@@ -661,18 +661,12 @@ function sanitizeLeads(leads) {
 async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = null, request, opts = {}) {
   try {
     // 1. Initialize State from KV
-    let currentCohort = [];
-    let kvData = null;
+    let kvState = { data: [], iteration: 0, next_cursor: null, status: 'PROCESSING' };
     if (session_id) {
-        kvData = await env.KV_BINDING.get(session_id, { type: "json" });
-        if (kvData) {
-            if (Array.isArray(kvData)) {
-                currentCohort = kvData;
-            } else if (kvData.data && Array.isArray(kvData.data)) {
-                currentCohort = kvData.data;
-            }
-        }
+        kvState = await env.KV_BINDING.get(session_id, { type: "json" }) || kvState;
     }
+    let currentCohort = kvState.data || [];
+    let currentCursor = kvState.next_cursor || cursor;
 
     // 2. Adjust Payload for Chunking
     const payload = {
@@ -682,8 +676,8 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
       keywords: filters.keywords,
       limit: 50 // Limit batch size to prevent timeouts
     };
-    if (cursor) {
-        payload.cursor = cursor; // Assuming Apify actor supports 'cursor' or similar
+    if (currentCursor) {
+        payload.cursor = currentCursor; // Assuming Apify actor supports 'cursor' or similar
     }
 
     const controller = new AbortController();
@@ -713,25 +707,27 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
 
     // 3. Save State
     currentCohort = currentCohort.concat(scrapedItems);
-    if (session_id && currentCohort.length > 0) {
-        // Save the updated array back to KV store, expiring in 1 hour
-        await env.KV_BINDING.put(session_id, JSON.stringify({ data: currentCohort, status: 'PROCESSING' }), { expirationTtl: 3600 });
+    let nextCursor = data.next_cursor || (scrapedItems.length === 50 ? (currentCursor ? currentCursor + 50 : 50) : null);
+
+    if (session_id) {
+        kvState.iteration += 1;
+        kvState.data = currentCohort;
+        kvState.next_cursor = nextCursor;
+        kvState.status = 'PROCESSING';
+
+        await env.KV_BINDING.put(session_id, JSON.stringify(kvState), { expirationTtl: 3600 });
     }
 
     // 4. Check for Next Page and Self-Trigger
-    // Assuming Apify returns 'has_next_page' and 'next_cursor' in the response metadata (or similar pattern)
-    // For arrays returned directly, we might need to rely on the length == limit. Here we implement a theoretical 'next_cursor'
-    let nextCursor = data.next_cursor || (scrapedItems.length === 50 ? (cursor ? cursor + 50 : 50) : null);
-    // If the API directly returns an array we use pagination logic above. If it returns an object, we use data.next_cursor
 
 
 
 
     if (nextCursor && session_id) {
-        const chunk_iteration = opts.chunk_iteration || 1;
-        if (chunk_iteration >= 10) {
+        if (kvState.iteration >= 10) {
             // CIRCUIT BREAKER: Hard stop at 10 iterations
-            await env.KV_BINDING.put(session_id, JSON.stringify({ data: currentCohort, status: 'COMPLETED' }), { expirationTtl: 3600 });
+            kvState.status = 'PARTIAL_SUCCESS';
+            await env.KV_BINDING.put(session_id, JSON.stringify(kvState), { expirationTtl: 3600 });
 
             if (opts.userEmail) {
                 const { cleanLeads } = sanitizeLeads(currentCohort);
@@ -766,8 +762,6 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
         // Trigger self asynchronously
         const selfUrl = new URL(request.url);
         selfUrl.pathname = '/api/continue-scrape';
-
-        opts.chunk_iteration = chunk_iteration + 1;
 
         ctx.waitUntil(
             fetch(selfUrl.toString(), {
