@@ -5,7 +5,7 @@ import { FiDatabase, FiLock, FiMail, FiUsers, FiSearch, FiTarget, FiZap, FiRefre
 
 export default function Wizard() {
   if (typeof window !== 'undefined') window.useScraperStore = useScraperStore;
-  const { filters, email, updateFilter, updateEmail, initiateCheckout, isProcessing, estimatedLeads, resetFilters, checkoutError, hardResetSystem } = useScraperStore();
+  const { filters, email, updateFilter, updateEmail, initiateCheckout, isProcessing, fulfillmentStatus, estimatedLeads, resetFilters, checkoutError, hardResetSystem } = useScraperStore();
   const [validationError, setValidationError] = React.useState('');
 
   const handleCheckout = () => {
@@ -48,7 +48,7 @@ export default function Wizard() {
             </h2>
             <button
               onClick={resetFilters}
-              disabled={isProcessing}
+              disabled={isProcessing || fulfillmentStatus === 'verifying' || fulfillmentStatus === 'scraping'}
               className="text-[10px] font-mono text-gray-500 hover:text-white transition-colors flex items-center gap-1 mt-1 disabled:opacity-50"
             >
               <SafeIcon icon={FiRefreshCcw} className="w-3 h-3" />
@@ -81,7 +81,7 @@ export default function Wizard() {
                 onChange={(e) => { setValidationError(''); updateFilter('industry', e.target.value.replace(/[<>]|[^a-zA-Z0-9\s.,&'-]/g, '').trimStart()) }}
                 onBlur={(e) => { setValidationError(''); updateFilter('industry', e.target.value.trim()) }}
                 placeholder="e.g. Solar, Roofing, SaaS"
-                disabled={isProcessing}
+                disabled={isProcessing || fulfillmentStatus === 'verifying' || fulfillmentStatus === 'scraping'}
                 className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-2 focus:ring-axim-teal/50 focus:shadow-[0_0_10px_rgba(0,229,255,0.2)] focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-800 group-focus-within/input:text-axim-teal/40 transition-colors">
@@ -97,7 +97,7 @@ export default function Wizard() {
               onChange={(e) => { setValidationError(''); updateFilter('location', e.target.value.replace(/[<>]|[^a-zA-Z0-9\s.,&'-]/g, '').trimStart()) }}
               onBlur={(e) => { setValidationError(''); updateFilter('location', e.target.value.trim()) }}
               placeholder="City, State or Country"
-              disabled={isProcessing}
+              disabled={isProcessing || fulfillmentStatus === 'verifying' || fulfillmentStatus === 'scraping'}
               className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-2 focus:ring-axim-teal/50 focus:shadow-[0_0_10px_rgba(0,229,255,0.2)] focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
@@ -111,7 +111,7 @@ export default function Wizard() {
             <select 
               value={filters.size}
               onChange={(e) => { setValidationError(''); updateFilter('size', e.target.value) }}
-              disabled={isProcessing}
+              disabled={isProcessing || fulfillmentStatus === 'verifying' || fulfillmentStatus === 'scraping'}
               className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-2 focus:ring-axim-teal/50 focus:shadow-[0_0_10px_rgba(0,229,255,0.2)] focus:outline-none transition-all appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <option value="1-10">1-10 Employees</option>
@@ -130,7 +130,7 @@ export default function Wizard() {
               value={filters.keywords}
               onChange={(e) => { setValidationError(''); updateFilter('keywords', e.target.value.replace(/[<>]/g, '')) }}
               placeholder="e.g. CEO, Marketing Director"
-              disabled={isProcessing}
+              disabled={isProcessing || fulfillmentStatus === 'verifying' || fulfillmentStatus === 'scraping'}
               className="w-full bg-black/50 border border-white/10 text-white p-4 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-2 focus:ring-axim-teal/50 focus:shadow-[0_0_10px_rgba(0,229,255,0.2)] focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
@@ -148,7 +148,7 @@ export default function Wizard() {
               onChange={(e) => { setValidationError(''); updateEmail(e.target.value.trimStart()) }}
               onBlur={(e) => { setValidationError(''); updateEmail(e.target.value.trim()) }}
               placeholder="operator@company.com"
-              disabled={isProcessing}
+              disabled={isProcessing || fulfillmentStatus === 'verifying' || fulfillmentStatus === 'scraping'}
               className="w-full bg-black/50 border border-white/10 text-white py-4 pr-4 pl-12 rounded-xl font-mono text-sm focus:border-axim-teal focus:ring-2 focus:ring-axim-teal/50 focus:shadow-[0_0_10px_rgba(0,229,255,0.2)] focus:outline-none transition-all placeholder:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
@@ -177,7 +177,7 @@ export default function Wizard() {
           )}
           <button 
             onClick={handleCheckout}
-            disabled={isProcessing}
+            disabled={isProcessing || fulfillmentStatus === 'verifying' || fulfillmentStatus === 'scraping'}
             className="w-full bg-axim-teal text-black font-black uppercase tracking-[0.3em] py-6 rounded-2xl hover:bg-white transition-all duration-500 disabled:opacity-20 flex items-center justify-center gap-4 group shadow-[0_10px_40px_rgba(0,229,255,0.15)] relative overflow-hidden"
           >
             <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-500"></div>

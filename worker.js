@@ -24,27 +24,7 @@ function scrubPII(obj) {
 // This file is provided as requested for your edge node deployment.
 
 
-// --- RATE LIMITING ---
-const rateLimitMap = new Map();
-const RATE_LIMIT_MAX = 5;
-const RATE_LIMIT_WINDOW_MS = 60000;
 
-function checkRateLimit(ip) {
-  const now = Date.now();
-  const record = rateLimitMap.get(ip) || { count: 0, firstRequestTime: now };
-
-  if (now - record.firstRequestTime > RATE_LIMIT_WINDOW_MS) {
-    record.count = 1;
-    record.firstRequestTime = now;
-  } else {
-    record.count += 1;
-  }
-
-  rateLimitMap.set(ip, record);
-
-
-  return record.count <= RATE_LIMIT_MAX;
-}
 
 
 
@@ -53,15 +33,6 @@ function checkRateLimit(ip) {
 
 export default {
   async fetch(request, env, ctx) {
-    if (Math.random() < 0.1) {
-      const now = Date.now();
-      const cutoff = now - RATE_LIMIT_WINDOW_MS;
-      for (const [key, val] of rateLimitMap.entries()) {
-        if (val.firstRequestTime < cutoff) {
-          rateLimitMap.delete(key);
-        }
-      }
-    }
     const clientIP = request.headers.get('cf-connecting-ip') || 'unknown';
     const edgeContext = {
       colo: request.cf?.colo || 'UNKNOWN',
@@ -72,12 +43,16 @@ export default {
     const rateLimitUrl = new URL(request.url);
 
     if (['/api/checkout', '/api/fulfill'].includes(rateLimitUrl.pathname) && request.method === 'POST') {
-      if (!checkRateLimit(clientIP)) {
+      const rlKey = `rate_limit_${clientIP}`;
+      const requestCount = await env.KV_BINDING.get(rlKey) || 0;
+
+      if (Number(requestCount) >= 5) {
         return new Response(JSON.stringify({ error: "Too Many Requests" }), {
-          status: 429,
-          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': env.FRONTEND_URL || '*' }
+          status: 429, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': env.FRONTEND_URL || '*' }
         });
       }
+      // Increment and set TTL to 60 seconds
+      await env.KV_BINDING.put(rlKey, (Number(requestCount) + 1).toString(), { expirationTtl: 60 });
     }
 
 
@@ -393,6 +368,14 @@ export default {
         if (event.type === 'checkout.session.completed') {
             const session = event.data.object;
             const session_id = session.id;
+
+            const lockKey = `webhook_lock_${session_id}`;
+            const isLocked = await env.KV_BINDING.get(lockKey);
+            if (isLocked) {
+                return new Response(JSON.stringify({ status: "already_processing" }), { status: 200, headers: corsHeaders });
+            }
+            // Lock for 5 minutes to prevent concurrent webhook execution
+            await env.KV_BINDING.put(lockKey, 'true', { expirationTtl: 300 });
 
             // Execute fulfillment pipeline
             // Since this is a webhook, we trigger and wait, but stripe expects a quick 200.
