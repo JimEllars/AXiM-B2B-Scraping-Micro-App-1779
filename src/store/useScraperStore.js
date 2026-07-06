@@ -178,26 +178,36 @@ export const useScraperStore = create((set, get) => ({
 
       // 2. Poll the KV status endpoint
       let isPolling = true;
+      let failCount = 0;
       const pollStatus = async () => {
         if (!isPolling) return;
         try {
           const res = await fetch(`/api/status/${sessionId}`);
           if (res.ok) {
+            failCount = 0; // Reset on success
             const data = await res.json();
-            // Data could be `{ count: X, status: 'PROCESSING' | 'COMPLETED' }`
+            // Data could be `{ count: X, status: 'PROCESSING' | 'COMPLETED' | 'PARTIAL_SUCCESS' }`
             if (data.count !== undefined) {
                addLog(`[KV_SYNC] ${data.count} records successfully extracted to Edge storage...`);
             }
-            if (data.status === 'COMPLETED') {
+            if (data.status === 'COMPLETED' || data.status === 'PARTIAL_SUCCESS') {
                isPolling = false;
                set({ fulfillmentStatus: 'completed' });
                addLog("Mission Complete: Leads Dispatched.");
                await orderService.updateOrderStatus(sessionId, 'COMPLETED', data.count || estimatedLeads);
                return; // Exit polling loop
             }
+          } else {
+             throw new Error('Non-OK response'); // Trigger catch to increment failCount
           }
         } catch (e) {
-          // Ignore polling errors to let it keep retrying
+          failCount++;
+          if (failCount >= 5) {
+            isPolling = false;
+            addLog("[SYSTEM_FAULT] Lost connection to Onyx Swarm. Aborting sync.");
+            set({ fulfillmentStatus: 'error', checkoutError: 'NETWORK_TIMEOUT' });
+            return;
+          }
         }
 
         if (isPolling) {
