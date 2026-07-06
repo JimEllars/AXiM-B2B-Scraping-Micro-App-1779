@@ -100,6 +100,13 @@ export default {
     };
 
     if (url.pathname.startsWith('/api/status/')) {
+
+        const statusHeaders = {
+            ...corsHeaders,
+            'X-Content-Type-Options': 'nosniff',
+            'X-Frame-Options': 'DENY',
+            'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none';"
+        };
         const id = url.pathname.split('/').pop();
         try {
             const data = await env.KV_BINDING.get(id, { type: "json" });
@@ -113,9 +120,9 @@ export default {
                     status = data.status || 'PROCESSING';
                 }
             }
-            return new Response(JSON.stringify({ count, status }), { headers: corsHeaders });
+            return new Response(JSON.stringify({ count, status }), { headers: statusHeaders });
         } catch (err) {
-             return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
+             return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: statusHeaders });
         }
     }
 
@@ -715,7 +722,7 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
         kvState.next_cursor = nextCursor;
         kvState.status = 'PROCESSING';
 
-        await env.KV_BINDING.put(session_id, JSON.stringify(kvState), { expirationTtl: 3600 });
+        await env.KV_BINDING.put(session_id, JSON.stringify(kvState), { expirationTtl: 86400 });
     }
 
     // 4. Check for Next Page and Self-Trigger
@@ -727,7 +734,7 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
         if (kvState.iteration >= 10) {
             // CIRCUIT BREAKER: Hard stop at 10 iterations
             kvState.status = 'PARTIAL_SUCCESS';
-            await env.KV_BINDING.put(session_id, JSON.stringify(kvState), { expirationTtl: 3600 });
+            await env.KV_BINDING.put(session_id, JSON.stringify(kvState), { expirationTtl: 86400 });
 
             if (opts.userEmail) {
                 const { cleanLeads } = sanitizeLeads(currentCohort);
@@ -986,7 +993,7 @@ async function finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filt
       );
 
       // Update KV to COMPLETED
-      await env.KV_BINDING.put(session_id, JSON.stringify({ data: scrapedLeads, status: 'COMPLETED' }), { expirationTtl: 3600 });
+      await env.KV_BINDING.put(session_id, JSON.stringify({ data: scrapedLeads, status: 'COMPLETED' }), { expirationTtl: 86400 });
       return { status: "empty_refunded", count: 0 };
   }
 
@@ -1002,7 +1009,7 @@ async function finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filt
   ctx.waitUntil(safeExecuteWithTelemetry('logExecutionToLedger', () => logExecutionToLedger(env.AXIM_SERVICE_KEY, session_id, filters), env, { session_id, filters }, edgeContext));
 
   // Mark KV as COMPLETED
-  await env.KV_BINDING.put(session_id, JSON.stringify({ data: scrapedLeads, status: 'COMPLETED' }), { expirationTtl: 3600 });
+  await env.KV_BINDING.put(session_id, JSON.stringify({ data: scrapedLeads, status: 'COMPLETED' }), { expirationTtl: 86400 });
 
   return { status: "fulfilled", count: cleanLeads.length, dropped: droppedCount };
 }
