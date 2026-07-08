@@ -6,7 +6,7 @@ import { FiAlertOctagon } from 'react-icons/fi';
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, crashHash: null };
   }
 
   static getDerivedStateFromError(error) {
@@ -14,6 +14,8 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
+    const hash = Math.random().toString(36).substring(2, 10).toUpperCase();
+    this.setState({ crashHash: hash });
     logError('REACT_TREE_CRASH', { message: error.message, stack: errorInfo.componentStack });
     try {
       fetch('https://api.axim.us.com/v1/telemetry/ingest', {
@@ -21,7 +23,7 @@ class ErrorBoundary extends React.Component {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           event_type: "CLIENT_INTERFACE_CRASH",
-          metadata: { error: error?.toString(), stack: errorInfo?.componentStack }
+          metadata: { error: error?.toString(), stack: errorInfo?.componentStack, crashHash: hash }
         })
       }).catch(e => {
         // Silently catch fetch errors (e.g., blocked by ad-blocker)
@@ -48,6 +50,11 @@ class ErrorBoundary extends React.Component {
             <p className="text-[10px] font-mono text-gray-500 uppercase tracking-[0.2em] mb-8">
               A critical fault has occurred in the application tree.
             </p>
+            {this.state.crashHash && (
+              <p className="font-mono text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-1 rounded mt-4 text-xs select-all mb-4">
+                [CRASH_HASH: {this.state.crashHash}]
+              </p>
+            )}
 
             <button
               onClick={() => window.location.reload()}

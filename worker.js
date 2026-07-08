@@ -133,6 +133,7 @@ export default {
       if (!env.EMAILIT_API_KEY) missingKeys.push('EMAILIT_API_KEY');
       if (!env.AXIM_SERVICE_KEY) missingKeys.push('AXIM_SERVICE_KEY');
       if (!env.STRIPE_WEBHOOK_SECRET) missingKeys.push('STRIPE_WEBHOOK_SECRET');
+      if (!env.KV_BINDING) missingKeys.push('KV_BINDING');
 
       if (missingKeys.length > 0) {
 
@@ -377,18 +378,24 @@ export default {
             // Lock for 5 minutes to prevent concurrent webhook execution
             await env.KV_BINDING.put(lockKey, 'true', { expirationTtl: 300 });
 
-            // Execute fulfillment pipeline
-            // Since this is a webhook, we trigger and wait, but stripe expects a quick 200.
-            // We use ctx.waitUntil to let the fulfillment run in the background.
-            ctx.waitUntil(
-                (async () => {
-                    try {
-                        await executeFulfillmentPipeline(session_id, env, ctx, '/api/webhook', corsHeaders, edgeContext, request);
-                    } catch (err) {
-                        console.error("Webhook fulfillment failed", err);
-                    }
-                })()
-            );
+            try {
+                // Execute fulfillment pipeline
+                // Since this is a webhook, we trigger and wait, but stripe expects a quick 200.
+                // We use ctx.waitUntil to let the fulfillment run in the background.
+                ctx.waitUntil(
+                    (async () => {
+                        try {
+                            await executeFulfillmentPipeline(session_id, env, ctx, '/api/webhook', corsHeaders, edgeContext, request);
+                        } catch (err) {
+                            console.error("Webhook fulfillment failed", err);
+                        }
+                    })()
+                );
+            } catch (err) {
+                // Release the lock so Stripe's retry mechanism can succeed later
+                await env.KV_BINDING.delete(lockKey);
+                throw err; // Pass to outer error handler
+            }
         }
 
         return new Response(JSON.stringify({ received: true }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` } });
