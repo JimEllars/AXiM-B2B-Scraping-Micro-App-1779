@@ -20,6 +20,7 @@ export const useScraperStore = create((set, get) => ({
   checkoutError: null,
   isOnline: navigator.onLine,
   activeNode: 'NODE_049_ACTIVE // SECURE_LINK',
+  currentRayId: null,
   
   updateEmail: (email) => set({ email, checkoutError: null }),
   updateFilter: (key, value) => {
@@ -106,6 +107,7 @@ export const useScraperStore = create((set, get) => ({
       const data = await res.json();
       const rayId = res.headers.get('X-AXiM-Ray-ID');
       if (rayId) {
+        set({ currentRayId: rayId });
         addLog(`[SYS_RAY_TRACE: ${rayId}]`);
       }
       if (data.url) {
@@ -229,6 +231,11 @@ export const useScraperStore = create((set, get) => ({
         throw new Error(errorData.error || `Fulfillment failed with status ${finalRes.status}`);
       }
       const data = await finalRes.json();
+      const rayId = finalRes.headers.get('X-AXiM-Ray-ID');
+      if (rayId) {
+        set({ currentRayId: rayId });
+        addLog(`[SYS_RAY_TRACE: ${rayId}]`);
+      }
 
       if (data.status === 'empty_refunded') {
         isPolling = false;

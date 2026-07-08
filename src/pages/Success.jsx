@@ -14,7 +14,7 @@ export default function Success() {
   const extractionTriggered = useRef(false);
 
   const analyticsTriggered = useRef(false);
-  const { fulfillmentStatus, triggerFulfillment, filters, estimatedLeads, currentOrderId } = useScraperStore();
+  const { fulfillmentStatus, triggerFulfillment, filters, estimatedLeads, currentOrderId, currentRayId } = useScraperStore();
 
   useEffect(() => {
     const handlePopState = () => useScraperStore.getState().hardResetSystem();
@@ -128,7 +128,7 @@ export default function Success() {
 
               {sessionId && (
                 <div className="text-gray-500 text-[10px] tracking-widest mt-4 font-mono">
-                  [ONYX SUPPORT HASH: {sessionId.slice(0, 8).toUpperCase()}]
+                  [ONYX SUPPORT HASH: {currentRayId || 'PENDING_TRACE'}]
                 </div>
               )}
             </div>
