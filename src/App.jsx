@@ -3,6 +3,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Home from './pages/Home';
 import Success from './pages/Success';
+import Admin from './pages/Admin';
 import SafeIcon from './common/SafeIcon';
 import { FiTerminal, FiLayout } from 'react-icons/fi';
 import '@questlabs/react-sdk/dist/style.css';
@@ -68,6 +69,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/success" element={<Success />} />
+            <Route path="/admin" element={<Admin />} />
           </Routes>
           </ErrorBoundary>
         </main>
