@@ -458,6 +458,17 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
 
         const filters = JSON.parse(session.metadata.filters);
         const userEmail = session.metadata.email;
+        const queryHash = `query_cache_${btoa(JSON.stringify(filters)).slice(0, 32)}`;
+
+        // Check KV Cache First
+        const cachedData = await env.KV_BINDING.get(queryHash, { type: "json" });
+        if (cachedData) {
+            const finalStatus = await finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filters, cachedData, edgeContext, queryHash);
+            return new Response(JSON.stringify(finalStatus), {
+              status: 200,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` }
+            });
+        }
 
         // Execute Scraping Logic (Mocked external API call)
         let scrapedLeads = [];
@@ -537,7 +548,7 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
         let finalStatus = { status: "processing", count: scrapedLeads.length };
 
         if (!scrapeResult.hasNextPage) {
-            finalStatus = await finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filters, scrapedLeads, edgeContext);
+            finalStatus = await finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filters, scrapedLeads, edgeContext, queryHash);
         }
 
         return new Response(JSON.stringify(finalStatus), {
@@ -848,7 +859,7 @@ async function syncToAximCore(aximKey, leads, filters, warningLog) {
   const payload = { source: 'b2b_scraper_microapp', cohort: filters, records: leads };
   if (warningLog) payload.warning = warningLog;
 
-  const response = await fetch('https://api.axim.us.com/v1/internal/leads/ingest', {
+  const response = await fetch('https://api.axim.us.com/v1/webhooks/enrich', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${aximKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -913,7 +924,7 @@ function logForegroundTelemetry(ctx, error, routePath, edgeContext) {
   );
 }
 
-async function finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filters, scrapedLeads, edgeContext) {
+async function finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filters, scrapedLeads, edgeContext, queryHash = null) {
   // --- MEMORY HARDENING ---
   const safeLeads = scrapedLeads.slice(0, 5000);
   let warningLog = undefined;
@@ -997,6 +1008,11 @@ async function finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filt
 
   // ASYNC TASK C: Log Execution to Core Ledger
   ctx.waitUntil(safeExecuteWithTelemetry('logExecutionToLedger', () => logExecutionToLedger(env.AXIM_SERVICE_KEY, session_id, filters), env, { session_id, filters }, edgeContext));
+
+  // Write to KV Cache on Success
+  if (queryHash) {
+      await env.KV_BINDING.put(queryHash, JSON.stringify(cleanLeads), { expirationTtl: 86400 });
+  }
 
   // Mark KV as COMPLETED
   await env.KV_BINDING.put(session_id, JSON.stringify({ data: scrapedLeads, status: 'COMPLETED' }), { expirationTtl: 86400 });
