@@ -116,6 +116,22 @@ export default {
     // A CF Bot Score below 30 indicates likely automated/malicious traffic
     const isWebhook = url.pathname === '/api/webhook';
     if (!isWebhook && edgeContext.botScore !== 'N/A' && edgeContext.botScore < 30) {
+      ctx.waitUntil(
+        fetch('https://api.axim.us.com/v1/telemetry/ingest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            telemetry_envelope: { project_id: "AXIM_B2B_SCRAPER", environment: "production", timestamp: new Date().toISOString() },
+            event_payload: {
+              event_type: "SECURITY_ALERT_BOT_TRAFFIC",
+              severity: "HIGH",
+              error_message: "Automated/malicious traffic blocked by Edge.",
+              metadata: { routing_designation: 'ASGUARD_SOC', ...edgeContext }
+            }
+          })
+        }).catch(err => console.error("Telemetry failed for bot block", err))
+      );
+
       return new Response(JSON.stringify({ error: "EDGE_SECURITY_BLOCK" }), {
         status: 403,
         headers: corsHeaders
@@ -264,6 +280,40 @@ export default {
 
 
 
+    // 2.8 INTERNAL ECOSYSTEM TRIGGER
+    if (url.pathname === '/api/internal/scrape' && request.method === 'POST') {
+      const authHeader = request.headers.get('Authorization');
+      if (!authHeader || authHeader !== `Bearer ${env.AXIM_SERVICE_KEY}`) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+      }
+      try {
+        const body = await request.json();
+        const { filters } = body;
+        if (!filters) {
+          return new Response(JSON.stringify({ error: "Missing filters" }), { status: 400, headers: corsHeaders });
+        }
+
+        const internal_session_id = `internal_${crypto.randomUUID()}`;
+
+        ctx.waitUntil(
+            (async () => {
+                try {
+                    const scrapeResult = await executeScrape(env.APIFY_API_TOKEN, filters, env, ctx, internal_session_id, null, request, { isInternal: true });
+                    if (!scrapeResult.hasNextPage) {
+                        const { cleanLeads } = sanitizeLeads(scrapeResult.data.slice(0, 5000));
+                        await syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters);
+                    }
+                } catch (err) {
+                    console.error("Internal scrape failed", err);
+                }
+            })()
+        );
+        return new Response(JSON.stringify({ status: "Accepted" }), { status: 202, headers: corsHeaders });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: "Bad Request" }), { status: 400, headers: corsHeaders });
+      }
+    }
+
     // 2.5 CONTINUE SCRAPE ENDPOINT
     if (url.pathname === '/api/continue-scrape' && request.method === 'POST') {
         try {
@@ -280,8 +330,13 @@ export default {
                         const opts = body.opts || {};
                         const scrapeResult = await executeScrape(env.APIFY_API_TOKEN, filters, env, ctx, session_id, cursor, request, opts);
 
-                        if (!scrapeResult.hasNextPage && opts.userEmail) {
-                            await finalizeFulfillmentPipeline(ctx, env, session_id, opts.userEmail, filters, scrapeResult.data, edgeContext);
+                        if (!scrapeResult.hasNextPage) {
+                            if (opts.userEmail) {
+                                await finalizeFulfillmentPipeline(ctx, env, session_id, opts.userEmail, filters, scrapeResult.data, edgeContext);
+                            } else if (opts.isInternal) {
+                                const { cleanLeads } = sanitizeLeads(scrapeResult.data.slice(0, 5000));
+                                await syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters);
+                            }
                         }
                     } catch (err) {
                         console.error("Continued scrape failed", err);
@@ -764,7 +819,7 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
                 }).catch(err => console.error("Failed telemetry for circuit breaker", err))
             );
 
-            return currentCohort; // Stop recursion
+            return { data: currentCohort, hasNextPage: false }; // Stop recursion
         }
 
         // Trigger self asynchronously
@@ -784,7 +839,7 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
     }
 
 
-    return currentCohort;
+    return { data: currentCohort, hasNextPage: !!nextCursor };
   } catch (err) {
     if (err.name === 'AbortError') {
       throw new Error("Scrape execution timeout: The scraping task took too long and timed out at the edge.");
@@ -908,7 +963,8 @@ function logForegroundTelemetry(ctx, error, routePath, edgeContext) {
             metadata: scrubPII({
               route: routePath,
               execution_timestamp: new Date().toISOString(),
-              target_swarm: isTimeout ? "Onyx Swarm" : undefined
+              target_swarm: isTimeout ? "Onyx Swarm" : undefined,
+              routing_designation: isTimeout ? 'SUPPORT_TRIAGE' : undefined
             })
           }
         };
