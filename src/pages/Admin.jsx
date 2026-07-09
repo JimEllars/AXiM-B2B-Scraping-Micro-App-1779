@@ -73,6 +73,7 @@ export default function Admin() {
               <div className="flex flex-col gap-2 mt-6 items-center">
                 <p className="font-mono text-xs text-gray-400">ACTIVE_BLOCKS: {metrics.active_blocks}</p>
                 <p className="font-mono text-xs text-gray-400">CACHE_HITS: {metrics.cache_hits}</p>
+                <p className="font-mono text-xs text-gray-400">ACTIVE_SESSIONS: {metrics.active_sessions}</p>
               </div>
             )}
           </div>

@@ -955,9 +955,28 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
         }), { expirationTtl: 86400 });
     }
 
-    if (nextCursor && env.FRONTEND_URL) {
+    if (nextCursor) {
+        if (kvState.iteration >= 10) {
+          kvState.status = 'PARTIAL_SUCCESS';
+          await env.KV_BINDING.put(session_id, JSON.stringify(kvState), { expirationTtl: 86400 });
+
+          // Dispatch telemetry event for tracking partial exhaustion states
+          ctx.waitUntil(
+            fetch('https://api.axim.us.com/v1/telemetry/ingest', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                telemetry_envelope: { project_id: "AXIM_B2B_SCRAPER", environment: "production", timestamp: new Date().toISOString() },
+                event_payload: { event_type: "CIRCUIT_BREAKER_TRIPPED", severity: "HIGH", error_message: "Recursive loop cut at 10 ceiling iterations.", metadata: { session_id } }
+              })
+            }).catch(() => {})
+          );
+          return { data: currentCohort, hasNextPage: false };
+        }
+
+        const requestUrl = new URL(request.url);
         ctx.waitUntil(
-            fetch(`${env.FRONTEND_URL}/api/internal/continue`, {
+            fetch(`${requestUrl.origin}/api/continue-scrape`, {
                 method: 'POST',
                 headers: {
                   'Authorization': `Bearer ${env.AXIM_SERVICE_KEY}`,
