@@ -132,10 +132,10 @@ export const useScraperStore = create((set, get) => ({
         throw new Error(`Checkout API failed with status ${res.status}`);
       }
       const data = await res.json();
-      const rayId = res.headers.get('X-AXiM-Ray-ID');
-      if (rayId) {
-        set({ currentRayId: rayId });
-        addLog(`[SYS_RAY_TRACE: ${rayId}]`);
+      const rayHeader = res.headers.get('X-AXiM-Ray-ID');
+      if (rayHeader) {
+        set({ currentRayId: rayHeader });
+        addLog(`[SYS_RAY_TRACE: ${rayHeader}]`);
       }
       if (data.url) {
         const geo = res.headers.get('X-AXiM-Geo');
@@ -264,10 +264,10 @@ export const useScraperStore = create((set, get) => ({
         throw new Error(errorData.error || `Fulfillment failed with status ${finalRes.status}`);
       }
       const data = await finalRes.json();
-      const rayId = finalRes.headers.get('X-AXiM-Ray-ID');
-      if (rayId) {
-        set({ currentRayId: rayId });
-        addLog(`[SYS_RAY_TRACE: ${rayId}]`);
+      const rayHeader = finalRes.headers.get('X-AXiM-Ray-ID');
+      if (rayHeader) {
+        set({ currentRayId: rayHeader });
+        addLog(`[SYS_RAY_TRACE: ${rayHeader}]`);
       }
 
       if (data.status === 'empty_refunded') {

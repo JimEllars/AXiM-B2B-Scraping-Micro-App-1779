@@ -460,7 +460,7 @@ export default {
 
                         if (!scrapeResult.hasNextPage) {
                             if (opts.userEmail) {
-                                await finalizeFulfillmentPipeline(ctx, env, session_id, opts.userEmail, filters, scrapeResult.data, edgeContext);
+                                await finalizeFulfillmentPipeline(ctx, env, session_id, opts.userEmail, filters, scrapeResult.data, edgeContext, null, opts.payment_intent);
                             } else if (opts.isInternal) {
                                 const { cleanLeads } = sanitizeLeads(scrapeResult.data.slice(0, 5000));
                                 await syncToAximCore(env, env.AXIM_SERVICE_KEY, cleanLeads, filters, undefined, opts.origin_source || 'Cockpit_UI', session_id);
@@ -653,7 +653,7 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
             let cache_hits = parseInt(await env.KV_BINDING.get('cache_hits_total') || '0', 10);
             await env.KV_BINDING.put('cache_hits_total', (cache_hits + 1).toString());
 
-            const finalStatus = await finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filters, cachedData, edgeContext, queryHash);
+            const finalStatus = await finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filters, cachedData, edgeContext, queryHash, session.payment_intent);
             return new Response(JSON.stringify(finalStatus), {
               status: 200,
               headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` }
@@ -738,7 +738,7 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
         let finalStatus = { status: "processing", count: scrapedLeads.length };
 
         if (!scrapeResult.hasNextPage) {
-            finalStatus = await finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filters, scrapedLeads, edgeContext, queryHash);
+            finalStatus = await finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filters, scrapedLeads, edgeContext, queryHash, session.payment_intent);
         }
 
         return new Response(JSON.stringify(finalStatus), {
@@ -1160,7 +1160,7 @@ function logForegroundTelemetry(ctx, error, routePath, edgeContext) {
   );
 }
 
-async function finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filters, scrapedLeads, edgeContext, queryHash = null) {
+async function finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filters, scrapedLeads, edgeContext, queryHash = null, paymentIntentId = null) {
   // --- MEMORY HARDENING ---
   const safeLeads = scrapedLeads.slice(0, 5000);
   let warningLog = undefined;
@@ -1181,7 +1181,7 @@ async function finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filt
                   'Idempotency-Key': crypto.randomUUID()
               },
               body: new URLSearchParams({
-                  payment_intent: session_id // This should technically be payment_intent, we'll keep what was there or pass it
+                  payment_intent: paymentIntentId || session_id
               })
           }).catch(err => console.error("Failed to initiate Stripe refund", err))
       );
