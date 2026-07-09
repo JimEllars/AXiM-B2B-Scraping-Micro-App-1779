@@ -19,7 +19,7 @@ new_trigger = """  triggerFulfillment: async (sessionId) => {
       if (import.meta.env.DEV || sessionId.startsWith('mock_')) {
         await new Promise(resolve => setTimeout(resolve, 800));
         addLog("Stripe Payment Verified: [PAID]");
-        await orderService.updateOrderStatus(sessionId, 'PROCESSING');
+
         set({ fulfillmentStatus: 'scraping' });
 
         let mockCount = 0;
@@ -29,7 +29,7 @@ new_trigger = """  triggerFulfillment: async (sessionId) => {
           if (mockCount >= 150) {
             clearInterval(mockInterval);
             addLog("Mission Complete: Leads Dispatched.");
-            orderService.updateOrderStatus(sessionId, 'COMPLETED', estimatedLeads);
+
             set({ fulfillmentStatus: 'completed' });
           }
         }, 3000);
@@ -60,7 +60,7 @@ new_trigger = """  triggerFulfillment: async (sessionId) => {
                clearInterval(pollInterval);
                set({ fulfillmentStatus: 'completed' });
                addLog("Mission Complete: Leads Dispatched.");
-               await orderService.updateOrderStatus(sessionId, 'COMPLETED', data.count || estimatedLeads);
+
             }
           }
         } catch (e) {
@@ -104,7 +104,7 @@ new_trigger = """  triggerFulfillment: async (sessionId) => {
       });
       set({ fulfillmentStatus: 'error' });
       addLog(`[EXTRACTION_PIPELINE_TIMEOUT] ERR: ${err.message}`);
-      await orderService.updateOrderStatus(sessionId, 'FAILED');
+
     }
   }"""
 

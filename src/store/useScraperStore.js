@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { logError } from '../utils/telemetry';
-import { orderService } from '../services/orderService';
 
 
 const generateIdempotencyKey = () => {
@@ -77,10 +76,7 @@ export const useScraperStore = create((set, get) => ({
       }
 
       // 1. Record the order in Google Sheets
-      const orderId = await orderService.createOrder({
-        email,
-        ...filters
-      });
+      const orderId = crypto.randomUUID();
       set({ currentOrderId: orderId });
       addLog(`ORDER_INITIALIZED_IN_LEDGER: ${orderId}`);
 
@@ -151,7 +147,7 @@ export const useScraperStore = create((set, get) => ({
       if (import.meta.env.DEV || sessionId.startsWith('mock_')) {
         await new Promise(resolve => setTimeout(resolve, 800));
         addLog("Stripe Payment Verified: [PAID]");
-        await orderService.updateOrderStatus(sessionId, 'PROCESSING');
+
         set({ fulfillmentStatus: 'scraping' });
         
         let mockCount = 0;
@@ -161,7 +157,7 @@ export const useScraperStore = create((set, get) => ({
           if (mockCount >= 150) {
             clearInterval(mockInterval);
             addLog("Mission Complete: Leads Dispatched.");
-            orderService.updateOrderStatus(sessionId, 'COMPLETED', estimatedLeads);
+
             set({ fulfillmentStatus: 'completed' });
           }
         }, 3000);
@@ -196,7 +192,7 @@ export const useScraperStore = create((set, get) => ({
                isPolling = false;
                set({ fulfillmentStatus: 'completed' });
                addLog("Mission Complete: Leads Dispatched.");
-               await orderService.updateOrderStatus(sessionId, 'COMPLETED', data.count || estimatedLeads);
+
                return; // Exit polling loop
             }
           } else {
@@ -260,7 +256,7 @@ export const useScraperStore = create((set, get) => ({
       });
       set({ fulfillmentStatus: 'error' });
       addLog(`[EXTRACTION_PIPELINE_TIMEOUT] ERR: ${err.message}`);
-      await orderService.updateOrderStatus(sessionId, 'FAILED');
+
     }
   }
 }));

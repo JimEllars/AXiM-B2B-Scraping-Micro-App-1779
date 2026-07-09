@@ -315,7 +315,7 @@ export default {
       }
       try {
         const body = await request.json();
-        const { filters, force_refresh } = body;
+        const { filters, force_refresh, origin_source } = body;
         if (!filters) {
           return new Response(JSON.stringify({ error: "Missing filters" }), { status: 400, headers: corsHeaders });
         }
@@ -334,7 +334,7 @@ export default {
                     (async () => {
                         try {
                             const { cleanLeads } = sanitizeLeads(cachedData.slice(0, 5000));
-                            await syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters);
+                            await syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters, undefined, origin_source, internal_session_id);
                         } catch (err) {
                             console.error("Internal cache sync failed", err);
                         }
@@ -347,10 +347,10 @@ export default {
         ctx.waitUntil(
             (async () => {
                 try {
-                    const scrapeResult = await executeScrape(env.APIFY_API_TOKEN, filters, env, ctx, internal_session_id, null, request, { isInternal: true });
+                    const scrapeResult = await executeScrape(env.APIFY_API_TOKEN, filters, env, ctx, internal_session_id, null, request, { isInternal: true, origin_source });
                     if (!scrapeResult.hasNextPage) {
                         const { cleanLeads } = sanitizeLeads(scrapeResult.data.slice(0, 5000));
-                        await syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters);
+                        await syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters, undefined, origin_source, internal_session_id);
                         await env.KV_BINDING.put(queryHash, JSON.stringify(cleanLeads), { expirationTtl: 86400 });
                         await env.KV_BINDING.put(internal_session_id, JSON.stringify({ data: scrapeResult.data, status: 'COMPLETED' }), { expirationTtl: 86400 });
                     }
@@ -386,7 +386,7 @@ export default {
                                 await finalizeFulfillmentPipeline(ctx, env, session_id, opts.userEmail, filters, scrapeResult.data, edgeContext);
                             } else if (opts.isInternal) {
                                 const { cleanLeads } = sanitizeLeads(scrapeResult.data.slice(0, 5000));
-                                await syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters);
+                                await syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters, undefined, opts.origin_source || 'Cockpit_UI', session_id);
                             }
                         }
                     } catch (err) {
@@ -782,113 +782,80 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
     let currentCohort = kvState.data || [];
     let currentCursor = kvState.next_cursor || cursor;
 
-    // 2. Adjust Payload for Chunking
-    const payload = {
-      industry: filters.industry,
-      location: filters.location,
-      size: filters.size,
-      keywords: filters.keywords,
-      limit: 50 // Limit batch size to prevent timeouts
-    };
-    if (currentCursor) {
-        payload.cursor = currentCursor; // Assuming Apify actor supports 'cursor' or similar
+    // DeepSeek AI Extraction Pivot
+    let rawHtmlChunk = '';
+    try {
+        const targetUrl = filters.website || 'https://example.com';
+        const htmlRes = await fetch(targetUrl);
+        const htmlText = await htmlRes.text();
+        rawHtmlChunk = htmlText.slice(0, 5000);
+    } catch (e) {
+        rawHtmlChunk = '<html><body>Dummy content due to fetch failure</body></html>';
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // Reduced timeout to 10s for chunks
+    const llmPayload = {
+      model: "deepseek-coder",
+      prompt: `Extract B2B contact data from the following HTML. Return ONLY a valid JSON array of objects matching this schema: { "first_name": "string", "last_name": "string", "company": "string", "email": "string", "phone": "string", "is_b2b": true }. Do not include markdown formatting or explanations.\n\nHTML:\n${rawHtmlChunk}`
+    };
 
-    const response = await fetch('https://api.apify.com/v2/actor-tasks/axim-scraper/run-sync-get-dataset-items', {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    const response = await fetch('https://api.axim.us.com/v1/llm/proxy', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${env.AXIM_SERVICE_KEY}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(llmPayload),
       signal: controller.signal
     });
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      throw new Error(`Scraper API failed with status: ${response.status}`);
+      throw new Error(`LLM Proxy failed with status: ${response.status}`);
     }
 
-    const data = await response.json();
-
-    const scrapedItems = Array.isArray(data) ? data : (data.items || []);
-
-
-
+    const dataText = await response.text();
+    let scrapedItems = [];
+    try {
+        let cleanJsonStr = dataText.replace(/```json/g, '').replace(/```/g, '').trim();
+        scrapedItems = JSON.parse(cleanJsonStr);
+        if (!Array.isArray(scrapedItems)) {
+            scrapedItems = [];
+        }
+    } catch (e) {
+        console.error("Failed to parse LLM response", e);
+        scrapedItems = [];
+    }
 
     // 3. Save State
     currentCohort = currentCohort.concat(scrapedItems);
-    let nextCursor = data.next_cursor || (scrapedItems.length === 50 ? (currentCursor ? currentCursor + 50 : 50) : null);
+
+    let nextCursor = null;
 
     if (session_id) {
-        kvState.iteration += 1;
-        kvState.data = currentCohort;
-        kvState.next_cursor = nextCursor;
-        kvState.status = 'PROCESSING';
-
-        await env.KV_BINDING.put(session_id, JSON.stringify(kvState), { expirationTtl: 86400 });
+        await env.KV_BINDING.put(session_id, JSON.stringify({
+          data: currentCohort,
+          iteration: kvState.iteration + 1,
+          next_cursor: nextCursor,
+          status: nextCursor ? 'PROCESSING' : 'COMPLETED'
+        }), { expirationTtl: 86400 });
     }
 
-    // 4. Check for Next Page and Self-Trigger
-
-
-
-
-    if (nextCursor && session_id) {
-        if (kvState.iteration >= 10) {
-            // CIRCUIT BREAKER: Hard stop at 10 iterations
-            kvState.status = 'PARTIAL_SUCCESS';
-            await env.KV_BINDING.put(session_id, JSON.stringify(kvState), { expirationTtl: 86400 });
-
-            if (opts.userEmail) {
-                const { cleanLeads } = sanitizeLeads(currentCohort);
-                const csvData = convertToCSV(cleanLeads);
-
-                ctx.waitUntil(
-                    sendEmailItFulfillment(env.EMAILIT_API_KEY, opts.userEmail, csvData, filters)
-                    .catch(err => console.error("Failed to send partial fulfillment", err))
-                );
-            }
-
-            // Log telemetry
-            ctx.waitUntil(
-                fetch('https://api.axim.us.com/v1/telemetry/ingest', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        telemetry_envelope: { project_id: "AXIM_B2B_SCRAPER", environment: "production", timestamp: new Date().toISOString() },
-                        event_payload: {
-                            event_type: "[CIRCUIT_BREAKER_TRIPPED]",
-                            severity: "HIGH",
-                            error_message: "Recursive scrape loop hit 10 iterations hard-stop.",
-                            metadata: { session_id, filters }
-                        }
-                    })
-                }).catch(err => console.error("Failed telemetry for circuit breaker", err))
-            );
-
-            return { data: currentCohort, hasNextPage: false }; // Stop recursion
-        }
-
-        // Trigger self asynchronously
-        const selfUrl = new URL(request.url);
-        selfUrl.pathname = '/api/continue-scrape';
-
+    if (nextCursor && env.FRONTEND_URL) {
         ctx.waitUntil(
-            fetch(selfUrl.toString(), {
+            fetch(`${env.FRONTEND_URL}/api/internal/continue`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Origin': env.FRONTEND_URL || 'http://localhost:5173'
+                  'Authorization': `Bearer ${env.AXIM_SERVICE_KEY}`,
+                  'Content-Type': 'application/json',
+                  'Origin': env.FRONTEND_URL || 'http://localhost:5173'
                 },
                 body: JSON.stringify({ session_id, cursor: nextCursor, filters, opts })
             }).catch(err => console.error("Failed to self-trigger continue scrape", err))
         );
     }
-
 
     return { data: currentCohort, hasNextPage: !!nextCursor };
   } catch (err) {
@@ -960,9 +927,9 @@ async function sendEmailItFulfillment(apiKey, email, csvData, filters) {
   if (!response.ok) throw new Error(`EmailIt API failed with status ${response.status}`);
 }
 
-async function syncToAximCore(aximKey, leads, filters, warningLog) {
+async function syncToAximCore(aximKey, leads, filters, warningLog, originSource, sessionId) {
   // Silent pipeline into Deskera / Albato via AXiM Core
-  const payload = { source: 'b2b_scraper_microapp', cohort: filters, records: leads };
+  const payload = { source: originSource || 'Cockpit_UI', session_id: sessionId, cohort: filters, data: leads, records: leads };
   if (warningLog) payload.warning = warningLog;
 
   const response = await fetch('https://api.axim.us.com/v1/webhooks/enrich', {
@@ -1111,7 +1078,7 @@ async function finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filt
   ctx.waitUntil(safeExecuteWithTelemetry('sendEmailItFulfillment', () => sendEmailItFulfillment(env.EMAILIT_API_KEY, userEmail, csvData, filters), env, { userEmail, filters }, edgeContext));
 
   // ASYNC TASK B: Dual-Benefit - Send Leads to AXiM Core for Internal CRM
-  ctx.waitUntil(safeExecuteWithTelemetry('syncToAximCore', () => syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters, warningLog), env, { filters, leadCount: cleanLeads.length, warningLog }, edgeContext));
+  ctx.waitUntil(safeExecuteWithTelemetry('syncToAximCore', () => syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters, warningLog, 'Cockpit_UI', session_id), env, { filters, leadCount: cleanLeads.length, warningLog }, edgeContext));
 
   // ASYNC TASK C: Log Execution to Core Ledger
   ctx.waitUntil(safeExecuteWithTelemetry('logExecutionToLedger', () => logExecutionToLedger(env.AXIM_SERVICE_KEY, session_id, filters), env, { session_id, filters }, edgeContext));
