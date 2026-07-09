@@ -173,7 +173,6 @@ export default {
     if (url.pathname.startsWith('/api/')) {
       const missingKeys = [];
       if (!env.STRIPE_SECRET_KEY) missingKeys.push('STRIPE_SECRET_KEY');
-      if (!env.APIFY_API_TOKEN) missingKeys.push('APIFY_API_TOKEN');
       if (!env.EMAILIT_API_KEY) missingKeys.push('EMAILIT_API_KEY');
       if (!env.AXIM_SERVICE_KEY) missingKeys.push('AXIM_SERVICE_KEY');
       if (!env.STRIPE_WEBHOOK_SECRET) missingKeys.push('STRIPE_WEBHOOK_SECRET');
@@ -425,7 +424,7 @@ export default {
         ctx.waitUntil(
             (async () => {
                 try {
-                    const scrapeResult = await executeScrape(env.APIFY_API_TOKEN, filters, env, ctx, internal_session_id, null, request, { isInternal: true, origin_source });
+                    const scrapeResult = await executeScrape(env.AXIM_SERVICE_KEY, filters, env, ctx, internal_session_id, null, request, { isInternal: true, origin_source });
                     if (!scrapeResult.hasNextPage) {
                         const { cleanLeads } = sanitizeLeads(scrapeResult.data.slice(0, 5000));
                         await syncToAximCore(env, env.AXIM_SERVICE_KEY, cleanLeads, filters, undefined, origin_source, internal_session_id);
@@ -457,7 +456,7 @@ export default {
                 (async () => {
                     try {
                         const opts = body.opts || {};
-                        const scrapeResult = await executeScrape(env.APIFY_API_TOKEN, filters, env, ctx, session_id, cursor, request, opts);
+                        const scrapeResult = await executeScrape(env.AXIM_SERVICE_KEY, filters, env, ctx, session_id, cursor, request, opts);
 
                         if (!scrapeResult.hasNextPage) {
                             if (opts.userEmail) {
@@ -483,6 +482,7 @@ export default {
 
     // 3. ASYNCHRONOUS WEBHOOK FALLBACK
     if (url.pathname === '/api/webhook' && request.method === 'POST') {
+      let lockKey;
       try {
         const signature = request.headers.get('stripe-signature');
         if (!signature) {
@@ -554,7 +554,7 @@ export default {
             const session = event.data.object;
             const session_id = session.id;
 
-            const lockKey = `webhook_lock_${session_id}`;
+            lockKey = `webhook_lock_${session_id}`;
             const isLocked = await env.KV_BINDING.get(lockKey);
             if (isLocked) {
                 return new Response(JSON.stringify({ status: "already_processing" }), { status: 200, headers: corsHeaders });
@@ -585,8 +585,11 @@ export default {
         return new Response(JSON.stringify({ received: true }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-AXiM-Geo': `${request.cf?.city || 'UNKNOWN'}, ${request.cf?.country || 'LOCAL'}` } });
 
       } catch (error) {
+        if (typeof lockKey !== 'undefined') {
+          await env.KV_BINDING.delete(lockKey);
+        }
         logForegroundTelemetry(ctx, error, '/api/webhook', edgeContext);
-        return new Response("Webhook Error", { status: 400 });
+        return new Response("Webhook Validation Fault", { status: 400 });
       }
     }
 
@@ -662,7 +665,7 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
         let scrapeResult = {};
         try {
           const opts = { userEmail, payment_intent: session.payment_intent };
-          const extractionPromise = executeScrape(env.APIFY_API_TOKEN, filters, env, ctx, session_id, null, request, opts);
+          const extractionPromise = executeScrape(env.AXIM_SERVICE_KEY, filters, env, ctx, session_id, null, request, opts);
           const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error("UPSTREAM_TIMEOUT")), 25000)
           );
