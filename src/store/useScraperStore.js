@@ -75,7 +75,7 @@ export const useScraperStore = create((set, get) => ({
         throw new Error("INVALID_EMAIL_FORMAT");
       }
 
-      // 1. Record the order in Google Sheets
+      // 1. Record the order in Ledger
       const orderId = crypto.randomUUID();
       set({ currentOrderId: orderId });
       addLog(`ORDER_INITIALIZED_IN_LEDGER: ${orderId}`);

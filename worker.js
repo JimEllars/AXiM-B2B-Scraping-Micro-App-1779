@@ -1,4 +1,23 @@
 
+function sanitizeLLMResponse(rawText) {
+  let cleanText = rawText.trim();
+  // Eliminate markdown code fence wrappers if present
+  if (cleanText.includes("```")) {
+    const matches = cleanText.match(/```(?:json)?([\s\S]*?)```/);
+    if (matches && matches[1]) {
+      cleanText = matches[1].trim();
+    }
+  }
+  // Strip any malicious or malformed leading/trailing text outside the bounds of the array
+  const startIdx = cleanText.indexOf('[');
+  const endIdx = cleanText.lastIndexOf(']');
+  if (startIdx !== -1 && endIdx !== -1) {
+    cleanText = cleanText.substring(startIdx, endIdx + 1);
+  }
+  return cleanText;
+}
+
+
 function maskEmailInString(str) {
   if (typeof str !== 'string') return str;
   return str.replace(/([a-zA-Z0-9._%+-]+)(@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, (match, localPart, domain) => {
@@ -290,6 +309,37 @@ export default {
 
 
     // 2.9 ADMIN AUTHENTICATION
+
+    // 2.95 ADMIN METRICS
+    if (url.pathname === '/api/admin/metrics' && request.method === 'GET') {
+      const authHeader = request.headers.get('Authorization');
+      if (!authHeader || !authHeader.startsWith('Bearer TEMP_SESSION_TOKEN_')) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+      }
+
+      try {
+        const { keys } = await env.KV_BINDING.list();
+        let activeBlocks = 0;
+        let cacheHits = 0;
+
+        for (const keyObj of keys) {
+            if (keyObj.name.startsWith('rate_limit_') || keyObj.name.startsWith('webhook_lock_')) {
+                activeBlocks++;
+            }
+            if (keyObj.name.startsWith('query_cache_')) {
+                cacheHits++;
+            }
+        }
+
+        return new Response(JSON.stringify({ active_blocks: activeBlocks, cache_hits: cacheHits }), {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
+      }
+    }
+
     if (url.pathname === '/api/admin/auth' && request.method === 'POST') {
       try {
         const body = await request.json();
@@ -819,13 +869,41 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
     const dataText = await response.text();
     let scrapedItems = [];
     try {
-        let cleanJsonStr = dataText.replace(/```json/g, '').replace(/```/g, '').trim();
+        let cleanJsonStr = sanitizeLLMResponse(dataText);
         scrapedItems = JSON.parse(cleanJsonStr);
         if (!Array.isArray(scrapedItems)) {
             scrapedItems = [];
         }
     } catch (e) {
         console.error("Failed to parse LLM response", e);
+        ctx.waitUntil(
+            (async () => {
+                try {
+                    const payload = {
+                        telemetry_envelope: {
+                            project_id: "AXIM_B2B_SCRAPER",
+                            environment: "production",
+                            timestamp: new Date().toISOString()
+                        },
+                        event_payload: {
+                            event_type: "LLM_PARSE_FAILURE",
+                            severity: "HIGH",
+                            error_message: e.message || String(e),
+                            metadata: {
+                                routing_designation: 'SUPPORT_TRIAGE'
+                            }
+                        }
+                    };
+                    await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                } catch (telemetryErr) {
+                    console.error("Telemetry failure", telemetryErr);
+                }
+            })()
+        );
         scrapedItems = [];
     }
 
