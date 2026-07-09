@@ -5,6 +5,27 @@ export default function Admin() {
   const [protocolKey, setProtocolKey] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [error, setError] = useState('');
+  const [metrics, setMetrics] = useState(null);
+
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      const fetchMetrics = async () => {
+        try {
+          const token = sessionStorage.getItem('adminToken');
+          const res = await fetch('/api/admin/metrics', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setMetrics(data);
+          }
+        } catch (err) {
+          console.error("Failed to fetch metrics", err);
+        }
+      };
+      fetchMetrics();
+    }
+  }, [isAuthenticated]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -45,6 +66,12 @@ export default function Admin() {
             <p className="text-[10px] font-mono text-gray-500 mt-2 uppercase tracking-widest text-center">
               System Access Granted.
             </p>
+            {metrics && (
+              <div className="flex flex-col gap-2 mt-6 items-center">
+                <p className="font-mono text-xs text-gray-400">ACTIVE_BLOCKS: {metrics.active_blocks}</p>
+                <p className="font-mono text-xs text-gray-400">CACHE_HITS: {metrics.cache_hits}</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
