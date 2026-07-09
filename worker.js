@@ -323,11 +323,14 @@ export default {
         let cacheHits = 0;
         let sessions = [];
 
+        let cacheHitsTotal = await env.KV_BINDING.get('cache_hits_total');
+        cacheHits = parseInt(cacheHitsTotal || '0', 10);
+
         for (const keyObj of keys) {
             if (keyObj.name.startsWith('rate_limit_') || keyObj.name.startsWith('webhook_lock_') || keyObj.name.startsWith('admin_auth_limit_')) {
                 activeBlocks++;
-            } else if (keyObj.name.startsWith('query_cache_')) {
-                cacheHits++;
+            } else if (keyObj.name.startsWith('query_cache_') || keyObj.name === 'cache_hits_total') {
+                // Ignore these for session counting
             } else {
                 // Assume it's a session ID if it doesn't have these prefixes
                 sessions.push(keyObj.name);
@@ -409,7 +412,7 @@ export default {
                     (async () => {
                         try {
                             const { cleanLeads } = sanitizeLeads(cachedData.slice(0, 5000));
-                            await syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters, undefined, origin_source, internal_session_id);
+                            await syncToAximCore(env, env.AXIM_SERVICE_KEY, cleanLeads, filters, undefined, origin_source, internal_session_id);
                         } catch (err) {
                             console.error("Internal cache sync failed", err);
                         }
@@ -425,7 +428,7 @@ export default {
                     const scrapeResult = await executeScrape(env.APIFY_API_TOKEN, filters, env, ctx, internal_session_id, null, request, { isInternal: true, origin_source });
                     if (!scrapeResult.hasNextPage) {
                         const { cleanLeads } = sanitizeLeads(scrapeResult.data.slice(0, 5000));
-                        await syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters, undefined, origin_source, internal_session_id);
+                        await syncToAximCore(env, env.AXIM_SERVICE_KEY, cleanLeads, filters, undefined, origin_source, internal_session_id);
                         await env.KV_BINDING.put(queryHash, JSON.stringify(cleanLeads), { expirationTtl: 86400 });
                         await env.KV_BINDING.put(internal_session_id, JSON.stringify({ data: scrapeResult.data, status: 'COMPLETED' }), { expirationTtl: 86400 });
                     }
@@ -461,7 +464,7 @@ export default {
                                 await finalizeFulfillmentPipeline(ctx, env, session_id, opts.userEmail, filters, scrapeResult.data, edgeContext);
                             } else if (opts.isInternal) {
                                 const { cleanLeads } = sanitizeLeads(scrapeResult.data.slice(0, 5000));
-                                await syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters, undefined, opts.origin_source || 'Cockpit_UI', session_id);
+                                await syncToAximCore(env, env.AXIM_SERVICE_KEY, cleanLeads, filters, undefined, opts.origin_source || 'Cockpit_UI', session_id);
                             }
                         }
                     } catch (err) {
@@ -644,6 +647,9 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
         // Check KV Cache First
         const cachedData = await env.KV_BINDING.get(queryHash, { type: "json" });
         if (cachedData) {
+            let cache_hits = parseInt(await env.KV_BINDING.get('cache_hits_total') || '0', 10);
+            await env.KV_BINDING.put('cache_hits_total', (cache_hits + 1).toString());
+
             const finalStatus = await finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filters, cachedData, edgeContext, queryHash);
             return new Response(JSON.stringify(finalStatus), {
               status: 200,
@@ -1034,17 +1040,44 @@ async function sendEmailItFulfillment(apiKey, email, csvData, filters) {
   if (!response.ok) throw new Error(`EmailIt API failed with status ${response.status}`);
 }
 
-async function syncToAximCore(aximKey, leads, filters, warningLog, originSource, sessionId) {
+async function syncToAximCore(env, aximKey, leads, filters, warningLog, originSource, sessionId) {
   // Silent pipeline into Deskera / Albato via AXiM Core
   const payload = { source: originSource || 'Cockpit_UI', session_id: sessionId, cohort: filters, data: leads, records: leads };
   if (warningLog) payload.warning = warningLog;
 
-  const response = await fetch('https://api.axim.us.com/v1/webhooks/enrich', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${aximKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-  if (!response.ok) throw new Error(`Sync to AXiM Core failed with status ${response.status}`);
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const response = await fetch('https://api.axim.us.com/v1/webhooks/enrich', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${aximKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    if (!response.ok) {
+        throw new Error(`Sync to AXiM Core failed with status ${response.status}`);
+    }
+  } catch (err) {
+    if (sessionId) {
+        let kvStateStr = await env.KV_BINDING.get(sessionId);
+        if (kvStateStr) {
+            try {
+                let kvState = JSON.parse(kvStateStr);
+                kvState.status = 'FAILED';
+                await env.KV_BINDING.put(sessionId, JSON.stringify(kvState), { expirationTtl: 86400 });
+            } catch (e) {
+                console.error("KV parse failed", e);
+            }
+        }
+    }
+    const telemetryPayload = {
+        telemetry_envelope: { project_id: "AXIM_B2B_SCRAPER", environment: "production", timestamp: new Date().toISOString() },
+        event_payload: { event_type: "[BRIDGE_EGRESS_FAULT]", severity: "CRITICAL", error_message: err.message || String(err), metadata: { session_id: sessionId } }
+    };
+    await fetch('https://api.axim.us.com/v1/telemetry/ingest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(telemetryPayload) }).catch(() => {});
+    throw err;
+  }
 }
 
 async function logExecutionToLedger(aximKey, sessionId, filters) {
@@ -1185,7 +1218,7 @@ async function finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filt
   ctx.waitUntil(safeExecuteWithTelemetry('sendEmailItFulfillment', () => sendEmailItFulfillment(env.EMAILIT_API_KEY, userEmail, csvData, filters), env, { userEmail, filters }, edgeContext));
 
   // ASYNC TASK B: Dual-Benefit - Send Leads to AXiM Core for Internal CRM
-  ctx.waitUntil(safeExecuteWithTelemetry('syncToAximCore', () => syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters, warningLog, 'Cockpit_UI', session_id), env, { filters, leadCount: cleanLeads.length, warningLog }, edgeContext));
+  ctx.waitUntil(safeExecuteWithTelemetry('syncToAximCore', () => syncToAximCore(env, env.AXIM_SERVICE_KEY, cleanLeads, filters, warningLog, 'Cockpit_UI', session_id), env, { filters, leadCount: cleanLeads.length, warningLog }, edgeContext));
 
   // ASYNC TASK C: Log Execution to Core Ledger
   ctx.waitUntil(safeExecuteWithTelemetry('logExecutionToLedger', () => logExecutionToLedger(env.AXIM_SERVICE_KEY, session_id, filters), env, { session_id, filters }, edgeContext));

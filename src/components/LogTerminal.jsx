@@ -54,7 +54,7 @@ export default function LogTerminal() {
             <span className="text-gray-600">
               [<span className="text-axim-gold">{log.timestamp}</span>]
             </span>
-            <span className={log.message.includes('ERROR') ? 'text-red-500' : (log.message.includes('[SYSTEM] Data scrub complete.') ? 'text-axim-gold' : 'text-axim-teal')}>
+            <span className={(log.message.includes('ERROR:') || log.message.includes('[WARNING]')) ? 'text-red-400 font-bold animate-pulse' : (log.message.includes('ERROR') ? 'text-red-500' : (log.message.includes('[SYSTEM] Data scrub complete.') ? 'text-axim-gold' : 'text-axim-teal'))}>
               {log.message}
             </span>
           </div>
