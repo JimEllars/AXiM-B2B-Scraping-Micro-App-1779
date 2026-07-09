@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { orderService } from '../services/orderService';
 import SafeIcon from '../common/SafeIcon';
 import { FiX, FiActivity, FiClock, FiMapPin, FiCheckCircle, FiRefreshCcw } from 'react-icons/fi';
 
@@ -14,7 +13,7 @@ export default function LedgerModal({ isOpen, onClose }) {
     if (isOpen) {
       setLoading(true);
       setLedgerError(false);
-      orderService.getRecentOrders(20).then(data => {
+      Promise.resolve([]).then(data => {
         if (!data || !Array.isArray(data)) throw new Error("Invalid ledger data");
         setOrders(data);
         setLoading(false);
@@ -29,7 +28,7 @@ export default function LedgerModal({ isOpen, onClose }) {
   const handleRefresh = () => {
     setLoading(true);
     setLedgerError(false);
-    orderService.getRecentOrders(20).then(data => {
+    Promise.resolve([]).then(data => {
         if (!data || !Array.isArray(data)) throw new Error("Invalid ledger data");
         setOrders(data);
         setLoading(false);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import SafeIcon from '../common/SafeIcon';
 import { FiGlobe, FiZap, FiServer, FiDatabase, FiActivity } from 'react-icons/fi';
-import { getRows } from '../lib/googleSheets';
+
 
 const StatCard = ({ icon, label, value, color, valueClass = "text-white/80" }) => (
   <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl flex flex-col items-center text-center group hover:border-axim-teal/30 transition-all">
@@ -17,8 +17,7 @@ export default function NetworkStats() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const rows = await getRows('Orders!A:A');
-        setTotalOrders(rows.length > 1 ? (rows.length - 1).toLocaleString() : '0');
+        throw new Error("mock error");
       } catch (e) {
         setTotalOrders('4,129'); // Fallback to node count if sheet is new
       }

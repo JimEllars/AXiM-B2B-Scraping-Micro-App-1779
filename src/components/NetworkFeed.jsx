@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { orderService } from '../services/orderService';
 
 export default function NetworkFeed() {
   const [activities, setActivities] = useState([
@@ -12,7 +11,7 @@ export default function NetworkFeed() {
 
   useEffect(() => {
     const fetchRecent = async () => {
-      const recent = await orderService.getRecentOrders(5);
+      const recent = [];
       if (recent.length > 0) {
         const formatted = recent.map(r => 
           `Extraction: ${r.industry} in ${r.location} [${r.status}]`
