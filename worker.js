@@ -60,6 +60,8 @@ export default {
       botScore: request.cf?.botManagement?.score ?? 'N/A'
     };
     const rateLimitUrl = new URL(request.url);
+    const requestOrigin = `${rateLimitUrl.protocol}//${rateLimitUrl.host}`;
+    const frontendOrigin = env.FRONTEND_URL || requestOrigin;
 
     if (['/api/checkout', '/api/fulfill'].includes(rateLimitUrl.pathname) && request.method === 'POST') {
       const rlKey = `rate_limit_${clientIP}`;
@@ -67,7 +69,7 @@ export default {
 
       if (Number(requestCount) >= 5) {
         return new Response(JSON.stringify({ error: "Too Many Requests" }), {
-          status: 429, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': env.FRONTEND_URL || '*' }
+          status: 429, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': frontendOrigin }
         });
       }
       // Increment and set TTL to 60 seconds
@@ -77,7 +79,7 @@ export default {
 
 
     const origin = request.headers.get('Origin');
-    const allowedOrigin = env.FRONTEND_URL || 'http://localhost:5173';
+    const allowedOrigin = frontendOrigin;
     const url = new URL(request.url);
 
 
@@ -241,7 +243,7 @@ export default {
             'line_items[0][price_data][unit_amount]': '2900', // $29.00 Flat Rate
             'line_items[0][quantity]': '1',
             'mode': 'payment',
-            'success_url': `${env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+            'success_url': `${frontendOrigin}/success?session_id={CHECKOUT_SESSION_ID}`,
             'metadata[email]': email,
             'metadata[filters]': JSON.stringify(filters)
           })

@@ -1,7 +1,13 @@
+"$schema" = "./node_modules/wrangler/config-schema.json"
 name = "axim-b2b-scraper"
 main = "worker.js"
-compatibility_date = "2024-01-01"
+compatibility_date = "2026-07-09"
 
 [[kv_namespaces]]
 binding = "KV_BINDING"
-id = "d858ab5b1b41428dbf8b13717a4e930a"
+id = "3a09929721ed42b2b3363470144319a7"
+
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
