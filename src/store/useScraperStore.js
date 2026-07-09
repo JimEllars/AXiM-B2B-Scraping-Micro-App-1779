@@ -64,6 +64,37 @@ export const useScraperStore = create((set, get) => ({
 
   clearLogs: () => set({ logs: [] }),
 
+  startAdminPolling: () => {
+    // Only run if not already running to prevent multiple intervals
+    if (window._adminPollInterval) return;
+
+    window._adminPollInterval = setInterval(async () => {
+      const token = sessionStorage.getItem('adminToken');
+      if (!token) {
+        clearInterval(window._adminPollInterval);
+        window._adminPollInterval = null;
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/admin/metrics', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.active_sessions && data.active_sessions.length > 0) {
+            const { addLog } = get();
+            data.active_sessions.forEach(sessionId => {
+              addLog(`[SYSTEM_BROADCAST] ACTIVE_BACKGROUND_SESSION_DETECTED: ${sessionId}`);
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Admin polling failed", err);
+      }
+    }, 5000);
+  },
+
   initiateCheckout: async () => {
     set({ isProcessing: true, checkoutError: null });
     const { addLog, filters, email } = get();
@@ -192,6 +223,12 @@ export const useScraperStore = create((set, get) => ({
                isPolling = false;
                set({ fulfillmentStatus: 'completed' });
                addLog("Mission Complete: Leads Dispatched.");
+
+               return; // Exit polling loop
+            } else if (data.status === 'FAILED') {
+               isPolling = false;
+               set({ fulfillmentStatus: 'error' });
+               addLog("ERROR: Edge node execution aborted due to unrecoverable parsing anomaly.");
 
                return; // Exit polling loop
             }

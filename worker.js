@@ -321,17 +321,23 @@ export default {
         const { keys } = await env.KV_BINDING.list();
         let activeBlocks = 0;
         let cacheHits = 0;
+        let sessions = [];
 
         for (const keyObj of keys) {
-            if (keyObj.name.startsWith('rate_limit_') || keyObj.name.startsWith('webhook_lock_')) {
+            if (keyObj.name.startsWith('rate_limit_') || keyObj.name.startsWith('webhook_lock_') || keyObj.name.startsWith('admin_auth_limit_')) {
                 activeBlocks++;
-            }
-            if (keyObj.name.startsWith('query_cache_')) {
+            } else if (keyObj.name.startsWith('query_cache_')) {
                 cacheHits++;
+            } else {
+                // Assume it's a session ID if it doesn't have these prefixes
+                sessions.push(keyObj.name);
             }
         }
 
-        return new Response(JSON.stringify({ active_blocks: activeBlocks, cache_hits: cacheHits }), {
+        // The instructions: "collect the 3 most recent active session IDs from KV keys (excluding rate limits and other prefixes)."
+        const active_sessions = sessions.slice(0, 3);
+
+        return new Response(JSON.stringify({ active_blocks: activeBlocks, cache_hits: cacheHits, active_sessions }), {
             status: 200,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
@@ -342,14 +348,33 @@ export default {
 
     if (url.pathname === '/api/admin/auth' && request.method === 'POST') {
       try {
+        const clientIP = request.headers.get('CF-Connecting-IP') || 'unknown';
+        const adminRlKey = `admin_auth_limit_${clientIP}`;
+        const loginFailures = await env.KV_BINDING.get(adminRlKey) || 0;
+
+        const statusHeaders = {
+            ...corsHeaders,
+            'X-Content-Type-Options': 'nosniff',
+            'X-Frame-Options': 'DENY',
+            'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none';"
+        };
+
+        if (Number(loginFailures) >= 3) {
+          return new Response(JSON.stringify({ error: "ADMIN_ACCESS_LOCKED" }), {
+            status: 429, headers: statusHeaders
+          });
+        }
+
         const body = await request.json();
         const { protocol_key } = body;
 
         if (protocol_key && protocol_key === env.ADMIN_PROTOCOL_KEY) {
+          await env.KV_BINDING.delete(adminRlKey);
           // In a real app this would be a proper signed JWT. For Phase 45 micro-increment, a temporary hash is fine.
           const token = `TEMP_SESSION_TOKEN_${crypto.randomUUID()}`;
           return new Response(JSON.stringify({ success: true, token }), { status: 200, headers: corsHeaders });
         } else {
+          await env.KV_BINDING.put(adminRlKey, String(Number(loginFailures) + 1), { expirationTtl: 900 });
           return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401, headers: corsHeaders });
         }
       } catch (err) {
@@ -823,9 +848,9 @@ function sanitizeLeads(leads) {
 }
 
 async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = null, request, opts = {}) {
+  let kvState = { data: [], iteration: 0, next_cursor: null, status: 'PROCESSING' };
   try {
     // 1. Initialize State from KV
-    let kvState = { data: [], iteration: 0, next_cursor: null, status: 'PROCESSING' };
     if (session_id) {
         kvState = await env.KV_BINDING.get(session_id, { type: "json" }) || kvState;
     }
@@ -937,6 +962,10 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
 
     return { data: currentCohort, hasNextPage: !!nextCursor };
   } catch (err) {
+    if (session_id) {
+        kvState.status = 'FAILED';
+        await env.KV_BINDING.put(session_id, JSON.stringify(kvState), { expirationTtl: 86400 });
+    }
     if (err.name === 'AbortError') {
       throw new Error("Scrape execution timeout: The scraping task took too long and timed out at the edge.");
     }

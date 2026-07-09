@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 
+import { useScraperStore } from '../store/useScraperStore';
+
 // Minimal Admin Page scaffolding for Phase 44 Micro-Increment
 export default function Admin() {
   const [protocolKey, setProtocolKey] = useState('');
@@ -45,6 +47,7 @@ export default function Admin() {
         if (data.success && data.token) {
           sessionStorage.setItem('adminToken', data.token);
           setIsAuthenticated(true);
+          useScraperStore.getState().startAdminPolling();
         } else {
           setError('Invalid Protocol Key');
         }
