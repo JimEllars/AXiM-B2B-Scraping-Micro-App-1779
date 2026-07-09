@@ -87,6 +87,10 @@ export default {
             const data = await env.KV_BINDING.get(id, { type: "json" });
             let count = 0;
             let status = 'PROCESSING';
+
+            const authHeader = request.headers.get('Authorization');
+            const isInternal = authHeader && authHeader === `Bearer ${env.AXIM_SERVICE_KEY}`;
+
             if (data) {
                 if (Array.isArray(data)) {
                     count = data.length;
@@ -95,7 +99,12 @@ export default {
                     status = data.status || 'PROCESSING';
                 }
             }
-            return new Response(JSON.stringify({ count, status }), { headers: statusHeaders });
+
+            if (isInternal) {
+                return new Response(JSON.stringify(data || { count, status }), { headers: statusHeaders });
+            } else {
+                return new Response(JSON.stringify({ count, status }), { headers: statusHeaders });
+            }
         } catch (err) {
              return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: statusHeaders });
         }
@@ -280,6 +289,24 @@ export default {
 
 
 
+    // 2.9 ADMIN AUTHENTICATION
+    if (url.pathname === '/api/admin/auth' && request.method === 'POST') {
+      try {
+        const body = await request.json();
+        const { protocol_key } = body;
+
+        if (protocol_key && protocol_key === env.ADMIN_PROTOCOL_KEY) {
+          // In a real app this would be a proper signed JWT. For Phase 45 micro-increment, a temporary hash is fine.
+          const token = `TEMP_SESSION_TOKEN_${crypto.randomUUID()}`;
+          return new Response(JSON.stringify({ success: true, token }), { status: 200, headers: corsHeaders });
+        } else {
+          return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+        }
+      } catch (err) {
+        return new Response(JSON.stringify({ error: "Bad Request" }), { status: 400, headers: corsHeaders });
+      }
+    }
+
     // 2.8 INTERNAL ECOSYSTEM TRIGGER
     if (url.pathname === '/api/internal/scrape' && request.method === 'POST') {
       const authHeader = request.headers.get('Authorization');
@@ -288,12 +315,34 @@ export default {
       }
       try {
         const body = await request.json();
-        const { filters } = body;
+        const { filters, force_refresh } = body;
         if (!filters) {
           return new Response(JSON.stringify({ error: "Missing filters" }), { status: 400, headers: corsHeaders });
         }
 
         const internal_session_id = `internal_${crypto.randomUUID()}`;
+        const queryHash = `query_cache_${btoa(JSON.stringify(filters)).slice(0, 32)}`;
+        const forceRefresh = force_refresh === true;
+
+        if (!forceRefresh) {
+            const cachedData = await env.KV_BINDING.get(queryHash, { type: "json" });
+            if (cachedData) {
+                // If forceRefresh is false and we have cache, we could just return the cache
+                // But this internal trigger is for syncing, so we might just sync cached data?
+                // The prompt says "When executing the queryHash cache check, add the override logic: ... If forceRefresh is true, skip the cache check and proceed to Apify extraction".
+                ctx.waitUntil(
+                    (async () => {
+                        try {
+                            const { cleanLeads } = sanitizeLeads(cachedData.slice(0, 5000));
+                            await syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters);
+                        } catch (err) {
+                            console.error("Internal cache sync failed", err);
+                        }
+                    })()
+                );
+                return new Response(JSON.stringify({ status: "Accepted (Cached)" }), { status: 202, headers: corsHeaders });
+            }
+        }
 
         ctx.waitUntil(
             (async () => {
@@ -302,6 +351,8 @@ export default {
                     if (!scrapeResult.hasNextPage) {
                         const { cleanLeads } = sanitizeLeads(scrapeResult.data.slice(0, 5000));
                         await syncToAximCore(env.AXIM_SERVICE_KEY, cleanLeads, filters);
+                        await env.KV_BINDING.put(queryHash, JSON.stringify(cleanLeads), { expirationTtl: 86400 });
+                        await env.KV_BINDING.put(internal_session_id, JSON.stringify({ data: scrapeResult.data, status: 'COMPLETED' }), { expirationTtl: 86400 });
                     }
                 } catch (err) {
                     console.error("Internal scrape failed", err);

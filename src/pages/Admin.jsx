@@ -3,12 +3,53 @@ import React, { useState } from 'react';
 // Minimal Admin Page scaffolding for Phase 44 Micro-Increment
 export default function Admin() {
   const [protocolKey, setProtocolKey] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Protocol key processing is not wired to KV backend yet per Phase 44 instructions.
-    console.log("Admin Protocol Key Submitted", protocolKey);
+    setError('');
+
+    try {
+      const response = await fetch('/api/admin/auth', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ protocol_key: protocolKey })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.token) {
+          sessionStorage.setItem('adminToken', data.token);
+          setIsAuthenticated(true);
+        } else {
+          setError('Invalid Protocol Key');
+        }
+      } else {
+        setError('Invalid Protocol Key');
+      }
+    } catch (err) {
+      setError('Connection failed. Try again.');
+    }
   };
+
+  if (isAuthenticated) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] w-full px-6">
+        <div className="max-w-md w-full bg-void border border-white/10 rounded-lg p-8 shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-axim-teal to-transparent opacity-50"></div>
+          <div className="flex flex-col items-center mb-8">
+            <h1 className="text-xl font-black tracking-[0.2em] uppercase text-axim-teal">Dashboard</h1>
+            <p className="text-[10px] font-mono text-gray-500 mt-2 uppercase tracking-widest text-center">
+              System Access Granted.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] w-full px-6">
@@ -39,6 +80,11 @@ export default function Admin() {
               placeholder="••••••••••••"
               autoComplete="off"
             />
+            {error && (
+              <span className="text-[10px] font-mono text-red-500 mt-1 uppercase tracking-widest">
+                {error}
+              </span>
+            )}
           </div>
 
           <button
