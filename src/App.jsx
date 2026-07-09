@@ -14,6 +14,11 @@ function App() {
   const activeNode = useScraperStore((state) => state.activeNode);
 
   React.useEffect(() => {
+    // Start admin polling if we have a token
+    if (sessionStorage.getItem('adminToken')) {
+      useScraperStore.getState().startAdminPolling();
+    }
+
     if (isOnline === false) {
       document.title = "[OFFLINE] AXiM B2B Scraper Terminal";
     } else {
