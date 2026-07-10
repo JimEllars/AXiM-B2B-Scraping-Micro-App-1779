@@ -1167,12 +1167,17 @@ async function syncToAximCore(env, aximKey, leads, filters, warningLog, originSo
 
 async function logExecutionToLedger(aximKey, sessionId, filters) {
   const payload = {
+    partner_id: "AXIM_B2B_SCRAPER",
+    amount: 2900,
     session_id: sessionId,
-    filters: filters,
+    contract_parameters: {
+      industry: filters.industry || 'N/A',
+      location: filters.location || 'N/A'
+    },
     timestamp: new Date().toISOString()
   };
 
-  const response = await fetch('https://api.axim.us.com/v1/ledger/log', {
+  const response = await fetch('https://api.axim.us.com/functions/v1/financial-audit', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${aximKey}`,
@@ -1319,6 +1324,17 @@ async function finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filt
 
   // Mark KV as COMPLETED
   await env.KV_BINDING.put(session_id, JSON.stringify({ data: scrapedLeads, status: 'COMPLETED' }), { expirationTtl: 86400 });
+
+  ctx.waitUntil(
+    fetch('https://api.axim.us.com/v1/telemetry/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        telemetry_envelope: { project_id: "AXIM_B2B_SCRAPER", environment: "production", timestamp: new Date().toISOString() },
+        event_payload: { event_type: "STATUS_TRANSITION", severity: "LOW", error_message: "Fulfillment step processed.", metadata: { session_id, current_status: 'COMPLETED' } }
+      })
+    }).catch(() => {})
+  );
 
   return { status: "fulfilled", count: cleanLeads.length, dropped: droppedCount };
 }
