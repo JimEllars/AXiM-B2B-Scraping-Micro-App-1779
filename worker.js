@@ -859,6 +859,7 @@ function sanitizeLeads(leads) {
 }
 
 async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = null, request, opts = {}) {
+  const rayIdHeader = request?.headers?.get('X-AXiM-Ray-ID') || crypto.randomUUID();
   let kvState = { data: [], iteration: 0, next_cursor: null, status: 'PROCESSING' };
   try {
     // 1. Initialize State from KV
@@ -869,19 +870,11 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
     let currentCursor = kvState.next_cursor || cursor;
 
     // DeepSeek AI Extraction Pivot
-    let rawHtmlChunk = '';
-    try {
-        const targetUrl = filters.website || 'https://example.com';
-        const htmlRes = await fetch(targetUrl);
-        const htmlText = await htmlRes.text();
-        rawHtmlChunk = htmlText.slice(0, 5000);
-    } catch (e) {
-        rawHtmlChunk = '<html><body>Dummy content due to fetch failure</body></html>';
-    }
+    const searchStreamContext = `Target Sector: ${filters.industry || 'General Business'} | Regional Territory: ${filters.location || 'Global'}. Generate a comprehensive business text index request.`;
 
     const llmPayload = {
       model: "deepseek-coder",
-      prompt: `Extract B2B contact data from the following HTML. Return ONLY a valid JSON array of objects matching this schema: { "first_name": "string", "last_name": "string", "company": "string", "email": "string", "phone": "string", "is_b2b": true }. Do not include markdown formatting or explanations.\n\nHTML:\n${rawHtmlChunk}`
+      prompt: `Extract B2B contact data relevant to the following search stream context. Return ONLY a valid JSON array of objects matching this schema: { "first_name": "string", "last_name": "string", "company": "string", "email": "string", "phone": "string", "is_b2b": true }. Do not include markdown formatting or explanations.\n\nSearch Stream Context:\n${searchStreamContext}`
     };
 
     const controller = new AbortController();
@@ -932,7 +925,10 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
                     };
                     await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'X-AXiM-Ray-ID': rayIdHeader
+                        },
                         body: JSON.stringify(payload)
                     });
                 } catch (telemetryErr) {
