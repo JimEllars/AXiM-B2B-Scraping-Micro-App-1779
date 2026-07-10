@@ -8,6 +8,7 @@ export default function Admin() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [error, setError] = useState('');
   const [metrics, setMetrics] = useState(null);
+  const [isDeauthorizing, setIsDeauthorizing] = useState(false);
 
   React.useEffect(() => {
     if (isAuthenticated) {
@@ -62,12 +63,12 @@ export default function Admin() {
   if (isAuthenticated) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] w-full px-6">
-        <div className="max-w-md w-full bg-void border border-white/10 rounded-lg p-8 shadow-2xl relative overflow-hidden">
+        <div className={`max-w-md w-full bg-void border border-white/10 rounded-lg p-8 shadow-2xl relative overflow-hidden transition-all duration-300 ease-in-out ${isDeauthorizing ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-axim-teal to-transparent opacity-50"></div>
           <div className="flex flex-col items-center mb-8">
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-black tracking-[0.2em] uppercase text-axim-teal">Dashboard</h1>
-              <div className="bg-axim-teal/80 animate-pulse rounded-full w-2 h-2"></div>
+              <div className={`animate-pulse rounded-full w-2 h-2 ${isDeauthorizing ? 'bg-amber-600' : 'bg-axim-teal/80'}`}></div>
             </div>
             <p className="text-[10px] font-mono text-gray-500 mt-2 uppercase tracking-widest text-center">
               System Access Granted.
@@ -90,9 +91,13 @@ export default function Admin() {
             )}
             <button
               onClick={() => {
-                useScraperStore.getState().purgeAdminSession();
-                setIsAuthenticated(false);
-                setProtocolKey("");
+                setIsDeauthorizing(true);
+                setTimeout(() => {
+                  useScraperStore.getState().purgeAdminSession();
+                  setIsAuthenticated(false);
+                  setProtocolKey("");
+                  setIsDeauthorizing(false);
+                }, 150);
               }}
               className="text-[9px] font-mono text-gray-600 hover:text-red-400 mt-6 transition-colors uppercase tracking-widest"
             >
