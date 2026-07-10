@@ -64,6 +64,14 @@ export const useScraperStore = create((set, get) => ({
 
   clearLogs: () => set({ logs: [] }),
 
+  purgeAdminSession: () => {
+    if (window._adminPollInterval) {
+      clearInterval(window._adminPollInterval);
+      window._adminPollInterval = null;
+    }
+    sessionStorage.removeItem("adminToken");
+  },
+
   startAdminPolling: () => {
     // Only run if not already running to prevent multiple intervals
     if (window._adminPollInterval) return;

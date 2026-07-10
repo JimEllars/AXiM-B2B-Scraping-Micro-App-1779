@@ -533,7 +533,18 @@ export default {
 
         let isValid = false;
         for (const sig of v1) {
-            const sigBytes = new Uint8Array(sig.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+            let sigBytes;
+            try {
+              const hexMatches = sig.match(/.{1,2}/g);
+              if (!hexMatches) throw new Error("MALFORMED_HEX_STREAM");
+              sigBytes = new Uint8Array(hexMatches.map(byte => {
+                const parsed = parseInt(byte, 16);
+                if (isNaN(parsed)) throw new Error("INVALID_HEX_CHAR");
+                return parsed;
+              }));
+            } catch (hexErr) {
+              return new Response("Cryptographic Handshake Fault", { status: 400 });
+            }
             const valid = await crypto.subtle.verify(
                 'HMAC',
                 cryptoKey,
@@ -1142,7 +1153,7 @@ function logForegroundTelemetry(ctx, error, routePath, edgeContext) {
               route: routePath,
               execution_timestamp: new Date().toISOString(),
               target_swarm: isTimeout ? "Onyx Swarm" : undefined,
-              routing_designation: isTimeout ? 'SUPPORT_TRIAGE' : undefined
+              routing_designation: isTimeout ? 'SUPPORT_TRIAGE' : 'SUPPORT_TRIAGE'
             })
           }
         };

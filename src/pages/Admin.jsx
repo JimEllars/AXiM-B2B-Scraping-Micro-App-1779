@@ -88,6 +88,16 @@ export default function Admin() {
                 </div>
               </div>
             )}
+            <button
+              onClick={() => {
+                useScraperStore.getState().purgeAdminSession();
+                setIsAuthenticated(false);
+                setProtocolKey("");
+              }}
+              className="text-[9px] font-mono text-gray-600 hover:text-red-400 mt-6 transition-colors uppercase tracking-widest"
+            >
+              [DE-AUTHORIZE TERMINAL SESSION]
+            </button>
           </div>
         </div>
       </div>
@@ -108,6 +118,7 @@ export default function Admin() {
             Restricted Area. Enter Protocol Key.
           </p>
         </div>
+
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">
