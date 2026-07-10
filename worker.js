@@ -1304,6 +1304,18 @@ async function finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filt
 
       // Update KV to COMPLETED
       await env.KV_BINDING.put(session_id, JSON.stringify({ data: scrapedLeads, status: 'COMPLETED' }), { expirationTtl: 86400 });
+
+      ctx.waitUntil(
+        fetch('https://api.axim.us.com/v1/telemetry/ingest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            telemetry_envelope: { project_id: "AXIM_B2B_SCRAPER", environment: "production", timestamp: new Date().toISOString() },
+            event_payload: { event_type: "STATUS_TRANSITION", severity: "LOW", error_message: "Fulfillment step processed.", metadata: { session_id, current_status: 'COMPLETED' } }
+          })
+        }).catch(() => {})
+      );
+
       return { status: "empty_refunded", count: 0 };
   }
 
