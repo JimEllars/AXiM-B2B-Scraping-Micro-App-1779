@@ -731,11 +731,15 @@ async function executeFulfillmentPipeline(session_id, env, ctx, routePath, corsH
                               metadata: { target_swarm: "Onyx Swarm", ...edgeContext }
                           }
                       };
-                      await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify(payload)
-                      });
+                      try {
+                          await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify(payload)
+                          });
+                      } catch (e) {
+                          // Ignore telemetry error
+                      }
                   } catch (telemetryErr) {
                       console.error("Telemetry failure", telemetryErr);
                   }
@@ -881,7 +885,9 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
     let currentCursor = kvState.next_cursor || cursor;
 
     // DeepSeek AI Extraction Pivot
-    const searchStreamContext = `Target Sector: ${filters.industry || 'General Business'} | Regional Territory: ${filters.location || 'Global'}. Generate a comprehensive business text index request.`;
+    const cleanIndustry = String(filters.industry || 'General').substring(0, 64).replace(/[^\w\s-]/g, '');
+    const cleanLocation = String(filters.location || 'Global').substring(0, 64).replace(/[^\w\s-]/g, '');
+    const searchStreamContext = `Target Sector: ${cleanIndustry} | Regional Territory: ${cleanLocation}. Generate a comprehensive business text index request.`;
 
     const llmPayload = {
       model: "deepseek-coder",
@@ -934,14 +940,18 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
                             }
                         }
                     };
-                    await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
-                        method: 'POST',
-                        headers: {
-                          'Content-Type': 'application/json',
-                          'X-AXiM-Ray-ID': rayIdHeader
-                        },
-                        body: JSON.stringify(payload)
-                    });
+                    try {
+                        await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
+                            method: 'POST',
+                            headers: {
+                            'Content-Type': 'application/json',
+                            'X-AXiM-Ray-ID': rayIdHeader
+                            },
+                            body: JSON.stringify(payload)
+                        });
+                    } catch (e) {
+                        // Intentionally ignored telemetry error
+                    }
                 } catch (telemetryErr) {
                     console.error("Telemetry failure", telemetryErr);
                 }
@@ -1106,7 +1116,11 @@ async function syncToAximCore(env, aximKey, leads, filters, warningLog, originSo
         telemetry_envelope: { project_id: "AXIM_B2B_SCRAPER", environment: "production", timestamp: new Date().toISOString() },
         event_payload: { event_type: "[BRIDGE_EGRESS_FAULT]", severity: "CRITICAL", error_message: err.message || String(err), metadata: { session_id: sessionId } }
     };
-    await fetch('https://api.axim.us.com/v1/telemetry/ingest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(telemetryPayload) }).catch(() => {});
+    try {
+        await fetch('https://api.axim.us.com/v1/telemetry/ingest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(telemetryPayload) });
+    } catch (e) {
+        // Ignore telemetry dispatch error to ensure fallback state writes succeed
+    }
     throw err;
   }
 }
@@ -1226,11 +1240,15 @@ async function finalizeFulfillmentPipeline(ctx, env, session_id, userEmail, filt
                           metadata: { target_swarm: "Onyx Swarm", ...edgeContext }
                       }
                   };
-                  await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(payload)
-                  });
+                  try {
+                      await fetch('https://api.axim.us.com/v1/telemetry/ingest', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(payload)
+                      });
+                  } catch (e) {
+                      // Ignore telemetry dispatch error
+                  }
               } catch (telemetryErr) {
                   console.error("Telemetry failure", telemetryErr);
               }
