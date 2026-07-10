@@ -65,15 +65,27 @@ export default function Admin() {
         <div className="max-w-md w-full bg-void border border-white/10 rounded-lg p-8 shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-axim-teal to-transparent opacity-50"></div>
           <div className="flex flex-col items-center mb-8">
-            <h1 className="text-xl font-black tracking-[0.2em] uppercase text-axim-teal">Dashboard</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl font-black tracking-[0.2em] uppercase text-axim-teal">Dashboard</h1>
+              <div className="bg-axim-teal/80 animate-pulse rounded-full w-2 h-2"></div>
+            </div>
             <p className="text-[10px] font-mono text-gray-500 mt-2 uppercase tracking-widest text-center">
               System Access Granted.
             </p>
             {metrics && (
-              <div className="flex flex-col gap-2 mt-6 items-center">
-                <p className="font-mono text-xs text-gray-400">ACTIVE_BLOCKS: {metrics.active_blocks}</p>
-                <p className="font-mono text-xs text-gray-400">CACHE_HITS: {metrics.cache_hits}</p>
-                <p className="font-mono text-xs text-gray-400">ACTIVE_SESSIONS: {metrics.active_sessions}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 w-full">
+                <div className="border border-white/5 bg-black/40 p-4 rounded-xl flex flex-col items-center justify-center">
+                  <span className="font-mono text-[9px] text-gray-500 uppercase tracking-widest mb-1">ACTIVE_BLOCKS</span>
+                  <span className="font-mono text-lg text-white font-bold">{metrics.active_blocks}</span>
+                </div>
+                <div className="border border-white/5 bg-black/40 p-4 rounded-xl flex flex-col items-center justify-center">
+                  <span className="font-mono text-[9px] text-gray-500 uppercase tracking-widest mb-1">CACHE_HITS</span>
+                  <span className="font-mono text-lg text-white font-bold">{metrics.cache_hits}</span>
+                </div>
+                <div className="border border-white/5 bg-black/40 p-4 rounded-xl flex flex-col items-center justify-center">
+                  <span className="font-mono text-[9px] text-gray-500 uppercase tracking-widest mb-1">ACTIVE_SESSIONS</span>
+                  <span className="font-mono text-lg text-white font-bold">{metrics.active_sessions}</span>
+                </div>
               </div>
             )}
           </div>
