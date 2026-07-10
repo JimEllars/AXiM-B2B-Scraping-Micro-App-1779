@@ -387,6 +387,38 @@ export default {
     }
 
     // 2.8 INTERNAL ECOSYSTEM TRIGGER
+    if (url.pathname === '/api/admin/purge-cache' && request.method === 'POST') {
+      try {
+        const authHeader = request.headers.get('Authorization');
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+        }
+
+        // Quick verification of the structure of the mocked token logic for Phase 45
+        const token = authHeader.split(' ')[1];
+        if (!token.startsWith('TEMP_SESSION_TOKEN_')) {
+             return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
+        }
+
+        const body = await request.json();
+        const targetQueryHash = body.targetQueryHash;
+
+        if (!targetQueryHash) {
+             return new Response(JSON.stringify({ error: "Missing targetQueryHash" }), { status: 400, headers: corsHeaders });
+        }
+
+        const targetCacheKey = `query_cache_${targetQueryHash}`;
+        await env.KV_BINDING.delete(targetCacheKey);
+
+        return new Response(JSON.stringify({ success: true, purged_key: targetCacheKey }), {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+         return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
+      }
+    }
+
     if (url.pathname === '/api/internal/scrape' && request.method === 'POST') {
       const authHeader = request.headers.get('Authorization');
       if (!authHeader || authHeader !== `Bearer ${env.AXIM_SERVICE_KEY}`) {
@@ -916,12 +948,20 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
     let scrapedItems = [];
     try {
         let cleanJsonStr = sanitizeLLMResponse(dataText);
-        scrapedItems = JSON.parse(cleanJsonStr);
+        let balancedText = cleanJsonStr.trim();
+        if (balancedText.startsWith('[') && !balancedText.endsWith(']')) {
+            balancedText = balancedText + ']';
+        }
+        scrapedItems = JSON.parse(balancedText);
         if (!Array.isArray(scrapedItems)) {
             scrapedItems = [];
         }
     } catch (e) {
         console.error("Failed to parse LLM response", e);
+        if (session_id) {
+            kvState.status = 'FAILED';
+            await env.KV_BINDING.put(session_id, JSON.stringify(kvState), { expirationTtl: 86400 });
+        }
         ctx.waitUntil(
             (async () => {
                 try {

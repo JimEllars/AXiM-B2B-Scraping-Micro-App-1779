@@ -72,6 +72,28 @@ export const useScraperStore = create((set, get) => ({
     sessionStorage.removeItem("adminToken");
   },
 
+  invalidateEdgeCache: async (targetQueryHash) => {
+    try {
+      const token = sessionStorage.getItem('adminToken');
+      if (!token) return;
+
+      const res = await fetch('/api/admin/purge-cache', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ targetQueryHash })
+      });
+
+      if (res.ok) {
+        get().addLog(`[CACHE_EVICTED] TARGET_HASH: ${targetQueryHash}`);
+      }
+    } catch (err) {
+      console.error("Cache invalidation failed", err);
+    }
+  },
+
   startAdminPolling: () => {
     // Only run if not already running to prevent multiple intervals
     if (window._adminPollInterval) return;
