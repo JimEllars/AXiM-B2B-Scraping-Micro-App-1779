@@ -1003,7 +1003,8 @@ async function executeScrape(apiKey, filters, env, ctx, session_id, cursor = nul
     // 3. Save State
     currentCohort = currentCohort.concat(scrapedItems);
 
-    let nextCursor = null;
+    // Dynamic temporary chunk handler for serverless loops
+    let nextCursor = kvState.iteration < 3 ? (currentCursor ? currentCursor + 50 : 50) : null;
 
     if (session_id) {
         await env.KV_BINDING.put(session_id, JSON.stringify({
@@ -1168,7 +1169,7 @@ async function syncToAximCore(env, aximKey, leads, filters, warningLog, originSo
 async function logExecutionToLedger(aximKey, sessionId, filters) {
   const payload = {
     partner_id: "AXIM_B2B_SCRAPER",
-    amount: 2900,
+    amount: 2900, // Commercial flat rate recorded strictly in cents
     session_id: sessionId,
     contract_parameters: {
       industry: filters.industry || 'N/A',

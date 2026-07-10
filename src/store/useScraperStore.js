@@ -98,7 +98,7 @@ export const useScraperStore = create((set, get) => ({
     // Only run if not already running to prevent multiple intervals
     if (window._adminPollInterval) return;
 
-    // TODO: Pivot to native Supabase Realtime channel streams in Phase 54.
+
     window._adminPollInterval = setInterval(async () => {
       const token = sessionStorage.getItem('adminToken');
       if (!token) {
@@ -123,6 +123,7 @@ export const useScraperStore = create((set, get) => ({
       } catch (err) {
         console.error("Admin polling failed", err);
       }
+    // TODO: Pivot to native Supabase Realtime channel streams in Phase 54
     }, 15000);
   },
 
