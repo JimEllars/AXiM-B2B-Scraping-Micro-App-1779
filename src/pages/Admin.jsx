@@ -9,6 +9,7 @@ export default function Admin() {
   const [error, setError] = useState('');
   const [metrics, setMetrics] = useState(null);
   const [isDeauthorizing, setIsDeauthorizing] = useState(false);
+  const [evictionSuccess, setEvictionSuccess] = useState(false);
 
   React.useEffect(() => {
     if (isAuthenticated) {
@@ -89,12 +90,16 @@ export default function Admin() {
                             setIsDeauthorizing(true); // Flash the amber orb
                             await useScraperStore.getState().invalidateEdgeCache(targetHash);
                             setMetrics(prev => ({...prev, cache_hits: 0}));
-                            setTimeout(() => setIsDeauthorizing(false), 500);
+                            setEvictionSuccess(true);
+                            setTimeout(() => {
+                                setIsDeauthorizing(false);
+                                setEvictionSuccess(false);
+                            }, 3000);
                         }
                     }}
                     className="text-[10px] font-mono text-red-400/60 hover:text-red-400 transition-colors cursor-pointer mt-2 block uppercase"
                   >
-                    [FLUSH CACHE REGISTRY]
+                    {evictionSuccess ? "[CACHE EVICTED SUCCESSFULLY]" : "[FLUSH CACHE REGISTRY]"}
                   </button>
                 </div>
                 <div className="border border-white/5 bg-black/40 p-4 rounded-xl flex flex-col items-center justify-center">
