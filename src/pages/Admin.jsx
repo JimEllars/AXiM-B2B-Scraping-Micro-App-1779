@@ -79,9 +79,23 @@ export default function Admin() {
                   <span className="font-mono text-[9px] text-gray-500 uppercase tracking-widest mb-1">ACTIVE_BLOCKS</span>
                   <span className="font-mono text-lg text-white font-bold">{metrics.active_blocks}</span>
                 </div>
-                <div className="border border-white/5 bg-black/40 p-4 rounded-xl flex flex-col items-center justify-center">
+                <div className="border border-white/5 bg-black/40 p-4 rounded-xl flex flex-col items-center justify-center relative">
                   <span className="font-mono text-[9px] text-gray-500 uppercase tracking-widest mb-1">CACHE_HITS</span>
                   <span className="font-mono text-lg text-white font-bold">{metrics.cache_hits}</span>
+                  <button
+                    onClick={async () => {
+                        const targetHash = window.prompt("Enter Target Query Hash to evict:");
+                        if (targetHash) {
+                            setIsDeauthorizing(true); // Flash the amber orb
+                            await useScraperStore.getState().invalidateEdgeCache(targetHash);
+                            setMetrics(prev => ({...prev, cache_hits: 0}));
+                            setTimeout(() => setIsDeauthorizing(false), 500);
+                        }
+                    }}
+                    className="text-[10px] font-mono text-red-400/60 hover:text-red-400 transition-colors cursor-pointer mt-2 block uppercase"
+                  >
+                    [FLUSH CACHE REGISTRY]
+                  </button>
                 </div>
                 <div className="border border-white/5 bg-black/40 p-4 rounded-xl flex flex-col items-center justify-center">
                   <span className="font-mono text-[9px] text-gray-500 uppercase tracking-widest mb-1">ACTIVE_SESSIONS</span>
